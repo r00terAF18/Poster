@@ -41,7 +41,22 @@ public class Workspace
 
     public string[] ListLocal()
     {
-        return Directory.GetFiles(Directory.GetCurrentDirectory(), "Workspace*.json");
+        HashSet<string> files = new(StringComparer.OrdinalIgnoreCase);
+        AddWorkspaceFiles(Directory.GetCurrentDirectory(), files);
+        AddWorkspaceFiles(AppContext.BaseDirectory, files);
+        return files.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static void AddWorkspaceFiles(string startDirectory, ISet<string> files)
+    {
+        DirectoryInfo? directory = new(startDirectory);
+        while (directory != null)
+        {
+            foreach (string file in Directory.EnumerateFiles(directory.FullName, "Workspace*.json"))
+                files.Add(file);
+
+            directory = directory.Parent;
+        }
     }
 
     public void Load(string filePath)

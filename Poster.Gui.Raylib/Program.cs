@@ -1,5 +1,7 @@
 using System.Numerics;
 using Poster.Core;
+using Poster.Gui.Controls;
+using Poster.Gui.Pages;
 using Raylib_cs;
 
 namespace Poster.Gui;
@@ -10,7 +12,13 @@ internal static class Program
     {
         Raylib.SetConfigFlags(ConfigFlags.ResizableWindow | ConfigFlags.Msaa4xHint | ConfigFlags.VSyncHint);
         Raylib.InitWindow(1440, 900, "Poster | API workspace");
-        Raylib.SetWindowMinSize(1120, 740);
+        Raylib.SetWindowMinSize(760, 560);
+        Image icon = Raylib.GenImageColor(64, 64, new Color(13, 17, 27, 255));
+        Raylib.ImageDrawCircle(ref icon, 32, 32, 27, new Color(91, 156, 255, 255));
+        Raylib.ImageDrawRectangle(ref icon, 26, 16, 12, 32, new Color(13, 17, 27, 255));
+        Raylib.ImageDrawCircle(ref icon, 32, 16, 6, new Color(13, 17, 27, 255));
+        Raylib.SetWindowIcon(icon);
+        Raylib.UnloadImage(icon);
         Raylib.SetTargetFPS(60);
 
         using PosterApp app = new PosterApp();
@@ -26,7 +34,7 @@ internal static class Program
     }
 }
 
-internal sealed class PosterApp : IDisposable
+internal sealed partial class PosterApp : IDisposable
 {
     private static readonly HttpMethod[] Methods =
     [
@@ -59,6 +67,7 @@ internal sealed class PosterApp : IDisposable
     private readonly TextBuffer _apiKeyHeader = new("X-API-Key");
     private readonly TextBuffer _variableName = new();
     private readonly TextBuffer _variableValue = new();
+    private readonly TextBuffer _workspaceName = new("My Workspace");
     private readonly Stack<AppPage> _pageHistory = new();
 
     private PosterReqRes? _request;
@@ -71,10 +80,24 @@ internal sealed class PosterApp : IDisposable
     private double _noticeUntil;
     private int _methodIndex;
     private bool _disposed;
+    private bool _compactNavigation;
+    private bool _largeText;
+    private Font _font = Raylib.GetFontDefault();
+    private bool _ownsFont;
+    private static readonly int[] FontGlyphs = Enumerable.Range(32, 224).ToArray();
+
+    private int SidebarWidth => AppLayout.GetSidebarWidth(Raylib.GetScreenWidth(), _compactNavigation);
 
     public PosterApp()
     {
         _workspace.Name = "My Workspace";
+        string fontPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "segoeui.ttf");
+        if (File.Exists(fontPath))
+        {
+            _font = Raylib.LoadFontEx(fontPath, 96, FontGlyphs, FontGlyphs.Length);
+            Raylib.SetTextureFilter(_font.Texture, TextureFilter.Trilinear);
+            _ownsFont = true;
+        }
         CreateRequest();
     }
 
@@ -118,6 +141,9 @@ internal sealed class PosterApp : IDisposable
             case AppPage.Workspaces:
                 DrawWorkspacesPage();
                 break;
+            case AppPage.Options:
+                DrawOptionsPage();
+                break;
         }
 
         if (Environment.TickCount64 / 1000.0 < _noticeUntil)
@@ -126,49 +152,55 @@ internal sealed class PosterApp : IDisposable
 
     private void DrawSidebar()
     {
-        int width = 238;
+        int width = SidebarWidth;
+        bool compact = width < 100;
         Raylib.DrawRectangle(0, 0, width, Raylib.GetScreenHeight(), Surface);
         Raylib.DrawRectangle(width - 1, 0, 1, Raylib.GetScreenHeight(), Border);
         Raylib.DrawCircle(30, 34, 13, Accent);
-        Raylib.DrawText("P", 24, 24, 20, Background);
-        Raylib.DrawText("POSTER", 54, 24, 20, Text);
-        Raylib.DrawText("API WORKSPACE", 54, 46, 10, Muted);
+        DrawText("P", 24, 24, 20, Background);
+        if (!compact)
+        {
+            DrawText("POSTER", 54, 24, 20, Text);
+            DrawText("API WORKSPACE", 54, 46, 10, Muted);
+        }
 
-        if (Button("+  New request", new Rectangle(16, 82, 206, 42), true))
+        if (Button(compact ? "+" : "+  New request", new Rectangle(compact ? 12 : 16, 82, compact ? 48 : 206, 42), true))
         {
             CreateRequest();
             _page = AppPage.Request;
             _pageHistory.Clear();
         }
 
-        DrawSidebarNav("Request", AppPage.Request, 150);
-        DrawSidebarNav("History", AppPage.History, 194);
-        DrawSidebarNav("Variables", AppPage.Variables, 238);
+        DrawSidebarNav(compact ? "R" : "Request", AppPage.Request, 150);
+        DrawSidebarNav(compact ? "H" : "History", AppPage.History, 194);
+        DrawSidebarNav(compact ? "V" : "Variables", AppPage.Variables, 238);
+        DrawSidebarNav(compact ? "W" : "Workspaces", AppPage.Workspaces, 282);
+        DrawSidebarNav(compact ? "O" : "Options", AppPage.Options, 326);
 
-        Raylib.DrawText("WORKSPACE REQUESTS", 18, 300, 11, Muted);
-        float y = 327f;
+        if (!compact) DrawText("WORKSPACE REQUESTS", 18, 378, 11, Muted);
+        float y = compact ? 390f : 405f;
         for (int index = _workspace.Requests.Count - 1; index >= 0 && y < Raylib.GetScreenHeight() - 54; index--)
         {
             PosterReqRes request = _workspace.Requests[index];
-            if (Button($"{request.HttpMethod.Method}  {Shorten(request.Name, 17)}",
-                    new Rectangle(12, y, 214, 38), _request == request))
+            string label = compact ? request.HttpMethod.Method[..1] : $"{request.HttpMethod.Method}  {Shorten(request.Name, 17)}";
+            if (Button(label, new Rectangle(12, y, compact ? 48 : 214, 38), _request == request))
                 LoadRequest(request);
             y += 43;
         }
 
         Raylib.DrawRectangle(0, Raylib.GetScreenHeight() - 48, width, 48, SurfaceRaised);
-        Raylib.DrawText(Shorten(_workspace.Name, 24), 17, Raylib.GetScreenHeight() - 32, 14, Muted);
+        DrawText(compact ? "WS" : Shorten(_workspace.Name, 24), 17, Raylib.GetScreenHeight() - 32, 14, Muted);
     }
 
     private void DrawSidebarNav(string label, AppPage page, float y)
     {
-        if (Button(label, new Rectangle(12, y, 214, 36), _page == page))
+        if (Button(label, new Rectangle(12, y, SidebarWidth < 100 ? 48 : 214, 36), _page == page))
             Navigate(page);
     }
 
     private void DrawTopBar()
     {
-        int left = 260;
+        int left = SidebarWidth + 22;
         Raylib.DrawRectangle(left, 0, Raylib.GetScreenWidth() - left, 72, Background);
         Raylib.DrawLine(left, 71, Raylib.GetScreenWidth(), 71, Border);
 
@@ -177,9 +209,10 @@ internal sealed class PosterApp : IDisposable
             AppPage.History => "Request history",
             AppPage.Variables => "Workspace variables",
             AppPage.Workspaces => "Open workspace",
+            AppPage.Options => "Application options",
             _ => "Request editor",
         };
-        Raylib.DrawText(title, 278, 24, 21, Text);
+        DrawText(title, left + 18, 24, 21, Text);
 
         if (_page == AppPage.Request && _pageHistory.Count == 0 && Button("Open", new Rectangle(Raylib.GetScreenWidth() - 310, 18, 94, 38)))
             Navigate(AppPage.Workspaces);
@@ -202,12 +235,15 @@ internal sealed class PosterApp : IDisposable
 
     private void DrawRequestPage()
     {
-        float contentX = 270f;
+        float contentX = SidebarWidth + 32f;
         int width = Raylib.GetScreenWidth();
         int height = Raylib.GetScreenHeight();
-        float responseX = Math.Max(contentX + 570, width - 438);
-        float editorWidth = responseX - contentX - 20;
-        float responseWidth = width - responseX - 20;
+        RequestPageLayout layout = RequestPageLayout.Create(width, SidebarWidth);
+        contentX = layout.ContentX;
+        bool stacked = layout.IsStacked;
+        float responseX = layout.ResponseX;
+        float editorWidth = layout.EditorWidth;
+        float responseWidth = layout.ResponseWidth;
         float top = 90f;
 
         DrawTextField("REQUEST NAME", _name, new Rectangle(contentX, top, editorWidth, 58));
@@ -218,26 +254,29 @@ internal sealed class PosterApp : IDisposable
         DrawTextField("URL", _route, new Rectangle(contentX + 120, top, editorWidth - 120, 64));
         top += 84;
 
+        float queryHeight = stacked ? 76 : 106;
         DrawTextArea("QUERY PARAMETERS  ·  key=value per line", _query,
-            new Rectangle(contentX, top, editorWidth, 106));
-        top += 126;
+            new Rectangle(contentX, top, editorWidth, queryHeight));
+        top += queryHeight + 20;
 
+        float headersHeight = stacked ? 76 : 100;
         DrawTextArea("HEADERS  ·  name=value per line", _headers,
-            new Rectangle(contentX, top, editorWidth, 100));
-        top += 120;
+            new Rectangle(contentX, top, editorWidth, headersHeight));
+        top += headersHeight + 20;
 
         DrawAuthEditor(contentX, top, editorWidth);
         top += _authType == AuthType.None ? 56 : 120;
 
-        float bodyHeight = Math.Max(100, height - top - 28);
+        float bodyHeight = stacked ? 100 : Math.Max(100, height - top - 28);
         DrawTextArea("BODY", _body, new Rectangle(contentX, top, editorWidth, bodyHeight));
 
-        DrawResponsePanel(responseX, 90, responseWidth, height - 110);
+        float responseY = stacked ? top + bodyHeight + 20 : 90;
+        DrawResponsePanel(responseX, responseY, responseWidth, Math.Max(150, height - responseY - 20));
     }
 
     private void DrawAuthEditor(float x, float y, float width)
     {
-        Raylib.DrawText("AUTHENTICATION", (int)x, (int)y, 11, Muted);
+        DrawText("AUTHENTICATION", (int)x, (int)y, 11, Muted);
         string label = _authType switch
         {
             AuthType.None => "None",
@@ -266,7 +305,7 @@ internal sealed class PosterApp : IDisposable
     private void DrawResponsePanel(float x, float y, float width, float height)
     {
         Panel(new Rectangle(x, y, width, height));
-        Raylib.DrawText("RESPONSE", (int)x + 18, (int)y + 16, 12, Muted);
+        DrawText("RESPONSE", (int)x + 18, (int)y + 16, 12, Muted);
 
         if (_sending)
         {
@@ -282,12 +321,12 @@ internal sealed class PosterApp : IDisposable
         HttpResponseMessage? response = _request?.ResponseMessage;
         string status = response == null ? "Waiting for a response" : $"{(int)response.StatusCode}  {response.ReasonPhrase}";
         Color statusColor = response == null ? Muted : response.IsSuccessStatusCode ? Green : Red;
-        Raylib.DrawText(status, (int)x + 18, (int)y + 66, 18, statusColor);
+        DrawText(status, (int)x + 18, (int)y + 66, 18, statusColor);
 
         if (_request != null && _request.LastExec != default)
         {
             string metrics = $"{_request.Metric.ElapsedTime} ms   ↓ {FormatBytes(_request.Metric.ResponseSize)}";
-            Raylib.DrawText(metrics, (int)x + 18, (int)y + 94, 13, Muted);
+            DrawText(metrics, (int)x + 18, (int)y + 94, 13, Muted);
         }
 
         Raylib.DrawLine((int)x + 16, (int)y + 122, (int)(x + width - 16), (int)y + 122, Border);
@@ -298,112 +337,6 @@ internal sealed class PosterApp : IDisposable
         DrawClippedText(body, (int)x + 18, bodyY, (int)width - 36, bodyHeight, error != null ? Red : Text);
     }
 
-    private void DrawHistoryPage()
-    {
-        float x = 272f;
-        float y = 100f;
-        float width = Raylib.GetScreenWidth() - x - 32;
-        Raylib.DrawText("Saved requests stay with this workspace. Select one to edit and run it again.",
-            (int)x, (int)y, 15, Muted);
-        y += 42;
-
-        if (_workspace.Requests.Count == 0)
-        {
-            Raylib.DrawText("No saved requests yet.", (int)x, (int)y, 16, Muted);
-            return;
-        }
-
-        for (int index = _workspace.Requests.Count - 1; index >= 0 && y < Raylib.GetScreenHeight() - 70; index--)
-        {
-            PosterReqRes request = _workspace.Requests[index];
-            Panel(new Rectangle(x, y, width, 58));
-            Raylib.DrawText(request.HttpMethod.Method, (int)x + 14, (int)y + 20, 14, Accent);
-            Raylib.DrawText(Shorten(request.Name, 26), (int)x + 102, (int)y + 20, 15, Text);
-            Raylib.DrawText(Shorten(request.Route, 44), (int)x + 300, (int)y + 21, 13, Muted);
-
-            if (Button("Open", new Rectangle(x + width - 164, y + 10, 70, 38)))
-                LoadRequest(request);
-            if (Button("Delete", new Rectangle(x + width - 84, y + 10, 70, 38)))
-            {
-                _workspace.Requests.RemoveAt(index);
-                SetNotice("Request removed from workspace");
-                return;
-            }
-            y += 68;
-        }
-    }
-
-    private void DrawVariablesPage()
-    {
-        float x = 272f;
-        float width = Raylib.GetScreenWidth() - x - 32;
-        DrawTextField("VARIABLE NAME", _variableName, new Rectangle(x, 104, width * 0.32f, 60));
-        DrawTextField("VALUE", _variableValue, new Rectangle(x + width * 0.34f, 104, width * 0.48f, 60));
-        if (Button("Save variable", new Rectangle(x + width - 142, 124, 142, 40), true))
-            SaveVariable();
-
-        Raylib.DrawText("Use variables in URLs, headers, query values, and bodies as {{name}}.",
-            (int)x, 188, 14, Muted);
-        float y = 230f;
-        foreach ((string key, string value) in _workspace.Variables.ToArray())
-        {
-            Panel(new Rectangle(x, y, width, 52));
-            Raylib.DrawText($"{{{{{key}}}}}", (int)x + 14, (int)y + 17, 15, Accent);
-            Raylib.DrawText(Shorten(value, 58), (int)x + 210, (int)y + 18, 14, Text);
-            if (Button("Edit", new Rectangle(x + width - 166, y + 7, 68, 38)))
-            {
-                _variableName.Set(key);
-                _variableValue.Set(value);
-            }
-            if (Button("Remove", new Rectangle(x + width - 88, y + 7, 76, 38)))
-            {
-                _workspace.Variables.Remove(key);
-                SetNotice("Variable removed");
-                return;
-            }
-            y += 62;
-        }
-    }
-
-    private void DrawWorkspacesPage()
-    {
-        float    x     = 272f;
-        float    y     = 106f;
-        float    width = Raylib.GetScreenWidth() - x - 32;
-        string[] files = _workspace.ListLocal();
-        Raylib.DrawText("Choose a saved workspace file from the current directory.", (int)x, (int)y, 14, Muted);
-        y += 42;
-
-        if (files.Length == 0)
-        {
-            Raylib.DrawText("No workspace files found.", (int)x, (int)y, 15, Muted);
-            return;
-        }
-
-        foreach (string file in files)
-        {
-            Panel(new Rectangle(x, y, width, 56));
-            Raylib.DrawText(Shorten(Path.GetFileName(file), 60), (int)x + 14, (int)y + 19, 14, Text);
-            if (Button("Load", new Rectangle(x + width - 92, y + 9, 78, 38)))
-            {
-                try
-                {
-                    _workspace.Load(file);
-                    CreateRequest();
-                    _page = AppPage.Request;
-                    _pageHistory.Clear();
-                    SetNotice($"Loaded {_workspace.Name}");
-                }
-                catch (Exception exception)
-                {
-                    SetNotice($"Load failed: {exception.Message}");
-                }
-                return;
-            }
-            y += 66;
-        }
-    }
-
     private void DrawSidebarNav(string label, AppPage page, int y)
     {
         if (Button(label, new Rectangle(12, y, 214, 36), _page == page))
@@ -412,14 +345,14 @@ internal sealed class PosterApp : IDisposable
 
     private void DrawTextField(string label, TextBuffer buffer, Rectangle bounds, bool secret = false)
     {
-        Raylib.DrawText(label, (int)bounds.X, (int)bounds.Y, 10, Muted);
+        DrawText(label, (int)bounds.X, (int)bounds.Y, 10, Muted);
         Rectangle box = new Rectangle(bounds.X, bounds.Y + 19, bounds.Width, bounds.Height - 19);
         DrawInputBox(buffer, box, false, secret);
     }
 
     private void DrawTextArea(string label, TextBuffer buffer, Rectangle bounds)
     {
-        Raylib.DrawText(label, (int)bounds.X, (int)bounds.Y, 10, Muted);
+        DrawText(label, (int)bounds.X, (int)bounds.Y, 10, Muted);
         Rectangle box = new Rectangle(bounds.X, bounds.Y + 19, bounds.Width, bounds.Height - 19);
         DrawInputBox(buffer, box, true, false);
     }
@@ -462,7 +395,7 @@ internal sealed class PosterApp : IDisposable
             int length = end - position;
             if (length > 0 && value[position + length - 1] == '\r') length--;
             string lineText = value.Substring(position, length);
-            Raylib.DrawText(lineText, (int)bounds.X + 10, (int)bounds.Y + 8 + drawnLines * lineHeight, 14, Text);
+            DrawText(lineText, (int)bounds.X + 10, (int)bounds.Y + 8 + drawnLines * lineHeight, 14, Text);
             drawnLines++;
             if (newline < 0) break;
             position = newline + 1;
@@ -496,7 +429,7 @@ internal sealed class PosterApp : IDisposable
             int length = end - position;
             if (length > 0 && value[position + length - 1] == '\r') length--;
             int visibleLength = Math.Min(length, maxCharacters);
-            Raylib.DrawText(value.Substring(position, visibleLength), x, y + index * lineHeight, 13, color);
+            DrawText(value.Substring(position, visibleLength), x, y + index * lineHeight, 13, color);
             if (end == value.Length) break;
             position = end + 1;
         }
@@ -510,9 +443,15 @@ internal sealed class PosterApp : IDisposable
         Color fill = primary ? Accent : hovered ? SurfaceRaised : Surface;
         Raylib.DrawRectangleRec(bounds, fill);
         Raylib.DrawRectangleLinesEx(bounds, 1, primary ? Accent : Border);
-        Raylib.DrawText(label, (int)bounds.X + 12, (int)bounds.Y + ((int)bounds.Height - 16) / 2, 14,
+        DrawText(label, (int)bounds.X + 12, (int)bounds.Y + ((int)bounds.Height - 16) / 2, 14,
             primary ? Background : Text);
         return hovered && Raylib.IsMouseButtonPressed(MouseButton.Left);
+    }
+
+    private void DrawText(string value, int x, int y, int fontSize, Color color)
+    {
+        float size = fontSize * (_largeText ? 1.12f : 1f);
+        Raylib.DrawTextEx(_font, value, new Vector2(x, y), size, 1f, color);
     }
 
     private static void Panel(Rectangle bounds)
@@ -707,7 +646,7 @@ internal sealed class PosterApp : IDisposable
         Rectangle bounds = new Rectangle(Raylib.GetScreenWidth() - textWidth - 18, Raylib.GetScreenHeight() - 54, textWidth, 38);
         Raylib.DrawRectangleRec(bounds, SurfaceRaised);
         Raylib.DrawRectangleLinesEx(bounds, 1, Border);
-        Raylib.DrawText(Shorten(_notice, Math.Max(16, (int)textWidth / 8)),
+        DrawText(Shorten(_notice, Math.Max(16, (int)textWidth / 8)),
             (int)bounds.X + 14, (int)bounds.Y + 11, 14, Text);
     }
 
@@ -758,6 +697,8 @@ internal sealed class PosterApp : IDisposable
             request.ResponseMessage?.Dispose();
             request.RequestMessage?.Dispose();
         }
+        if (_ownsFont)
+            Raylib.UnloadFont(_font);
     }
 
     private enum AppPage
@@ -766,52 +707,7 @@ internal sealed class PosterApp : IDisposable
         History,
         Variables,
         Workspaces,
+        Options,
     }
 
-    private sealed class TextBuffer(string value = "")
-    {
-        public string Value { get; private set; } = value;
-        public int Cursor { get; private set; } = value.Length;
-
-        public void Set(string value)
-        {
-            Value = value;
-            Cursor = value.Length;
-        }
-
-        public void Insert(char value)
-        {
-            Value = Value.Insert(Cursor, value.ToString());
-            Cursor++;
-        }
-
-        public void Backspace()
-        {
-            if (Cursor == 0) return;
-            Value = Value.Remove(Cursor - 1, 1);
-            Cursor--;
-        }
-
-        public void Delete()
-        {
-            if (Cursor < Value.Length)
-                Value = Value.Remove(Cursor, 1);
-        }
-
-        public void MoveLeft() => Cursor = Math.Max(0, Cursor - 1);
-
-        public void MoveRight() => Cursor = Math.Min(Value.Length, Cursor + 1);
-
-        public void MoveHome()
-        {
-            int searchIndex = Cursor == 0 ? -1 : Cursor - 1;
-            Cursor = searchIndex < 0 ? 0 : Value.LastIndexOf('\n', searchIndex) + 1;
-        }
-
-        public void MoveEnd()
-        {
-            int newline = Value.IndexOf('\n', Cursor);
-            Cursor = newline < 0 ? Value.Length : newline;
-        }
-    }
 }
