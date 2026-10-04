@@ -1,5 +1,3 @@
-using System.Net.Http;
-using System.Text;
 using Poster.Core;
 using Raylib_cs;
 
@@ -9,7 +7,7 @@ internal static class Program
 {
     private static void Main()
     {
-        Raylib.SetConfigFlags(ConfigFlags.ResizableWindow | ConfigFlags.Msaa4xHint);
+        Raylib.SetConfigFlags(ConfigFlags.ResizableWindow | ConfigFlags.Msaa4xHint | ConfigFlags.VSyncHint);
         Raylib.InitWindow(1440, 900, "Poster | API workspace");
         Raylib.SetWindowMinSize(1120, 740);
         Raylib.SetTargetFPS(60);
@@ -456,23 +454,28 @@ internal sealed class PosterApp : IDisposable
 
         var position = firstCharacter;
         var drawnLines = 0;
-        var lastLine = string.Empty;
         while (drawnLines < visibleLines && position <= value.Length)
         {
             var newline = multiline ? value.IndexOf('\n', position) : -1;
             var end = newline < 0 ? value.Length : newline;
             var length = end - position;
             if (length > 0 && value[position + length - 1] == '\r') length--;
-            lastLine = value.Substring(position, length);
-            Raylib.DrawText(lastLine, (int)bounds.X + 10, (int)bounds.Y + 8 + drawnLines * lineHeight, 14, Text);
+            var lineText = value.Substring(position, length);
+            Raylib.DrawText(lineText, (int)bounds.X + 10, (int)bounds.Y + 8 + drawnLines * lineHeight, 14, Text);
             drawnLines++;
             if (newline < 0) break;
             position = newline + 1;
         }
-        if (active && Raylib.GetTime() % 1 < 0.5)
+        if (active && buffer.Cursor >= firstCharacter && Raylib.GetTime() % 1 < 0.5)
         {
-            var cursorX = (int)bounds.X + 10 + Raylib.MeasureText(lastLine, 14);
-            var cursorY = (int)bounds.Y + 8 + Math.Max(0, drawnLines - 1) * lineHeight;
+            var cursorSearchIndex = buffer.Cursor == 0 ? -1 : buffer.Cursor - 1;
+            var cursorLineStart = cursorSearchIndex < 0 ? 0 : value.LastIndexOf('\n', cursorSearchIndex) + 1;
+            var cursorPrefix = value.Substring(cursorLineStart, buffer.Cursor - cursorLineStart);
+            var cursorLine = 0;
+            for (var index = firstCharacter; multiline && index < buffer.Cursor; index++)
+                if (value[index] == '\n') cursorLine++;
+            var cursorX = (int)bounds.X + 10 + Raylib.MeasureText(cursorPrefix, 14);
+            var cursorY = (int)bounds.Y + 8 + cursorLine * lineHeight;
             Raylib.DrawRectangle(cursorX, cursorY, 1, 16, Accent);
         }
         Raylib.EndScissorMode();
@@ -530,6 +533,10 @@ internal sealed class PosterApp : IDisposable
 
         if (Raylib.IsKeyPressed(KeyboardKey.Backspace)) _focused.Backspace();
         if (Raylib.IsKeyPressed(KeyboardKey.Delete)) _focused.Delete();
+        if (Raylib.IsKeyPressed(KeyboardKey.Left)) _focused.MoveLeft();
+        if (Raylib.IsKeyPressed(KeyboardKey.Right)) _focused.MoveRight();
+        if (Raylib.IsKeyPressed(KeyboardKey.Home)) _focused.MoveHome();
+        if (Raylib.IsKeyPressed(KeyboardKey.End)) _focused.MoveEnd();
         if (Raylib.IsKeyPressed(KeyboardKey.Enter))
         {
             if (_focused == _query || _focused == _headers || _focused == _body)
@@ -763,17 +770,47 @@ internal sealed class PosterApp : IDisposable
     private sealed class TextBuffer(string value = "")
     {
         public string Value { get; private set; } = value;
+        public int Cursor { get; private set; } = value.Length;
 
-        public void Set(string value) => Value = value;
+        public void Set(string value)
+        {
+            Value = value;
+            Cursor = value.Length;
+        }
 
-        public void Insert(char value) => Value += value;
+        public void Insert(char value)
+        {
+            Value = Value.Insert(Cursor, value.ToString());
+            Cursor++;
+        }
 
         public void Backspace()
         {
-            if (Value.Length > 0)
-                Value = Value[..^1];
+            if (Cursor == 0) return;
+            Value = Value.Remove(Cursor - 1, 1);
+            Cursor--;
         }
 
-        public void Delete() => Backspace();
+        public void Delete()
+        {
+            if (Cursor < Value.Length)
+                Value = Value.Remove(Cursor, 1);
+        }
+
+        public void MoveLeft() => Cursor = Math.Max(0, Cursor - 1);
+
+        public void MoveRight() => Cursor = Math.Min(Value.Length, Cursor + 1);
+
+        public void MoveHome()
+        {
+            var searchIndex = Cursor == 0 ? -1 : Cursor - 1;
+            Cursor = searchIndex < 0 ? 0 : Value.LastIndexOf('\n', searchIndex) + 1;
+        }
+
+        public void MoveEnd()
+        {
+            var newline = Value.IndexOf('\n', Cursor);
+            Cursor = newline < 0 ? Value.Length : newline;
+        }
     }
 }
