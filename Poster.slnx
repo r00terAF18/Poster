@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Poster.Console/Poster.Console.csproj" />
+  <Project Path="Poster.Core/Poster.Core.csproj" />
+</Solution>
