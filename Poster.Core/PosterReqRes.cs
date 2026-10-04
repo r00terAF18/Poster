@@ -22,6 +22,15 @@ public class AuthConfig
     public string ApiKeyHeader { get; set; } = "X-API-Key";
 }
 
+public class FileUpload
+{
+    /// <summary>Path to the file that will be included in a multipart request.</summary>
+    public string FilePath { get; set; } = "";
+
+    /// <summary>Name of the multipart form field that receives the file.</summary>
+    public string FieldName { get; set; } = "file";
+}
+
 public class PosterReqRes
 {
     public required HttpMethod HttpMethod { get; set; } = HttpMethod.Get;
@@ -41,6 +50,9 @@ public class PosterReqRes
 
     /// <summary>Authentication configuration for this request.</summary>
     public AuthConfig Auth { get; set; } = new();
+
+    /// <summary>Files to send as multipart form-data.</summary>
+    public List<FileUpload> Files { get; set; } = [];
 
     public string? ResponseBody { get; private set; }
     public string Body { get; set; } = "";
@@ -69,26 +81,60 @@ public class PosterReqRes
         ResponseBody = null;
 
         // Resolve variables in route and body
-        var resolvedRoute = Resolve(Route);
-        var resolvedBody = Resolve(Body);
+        string resolvedRoute = Resolve(Route);
+        string resolvedBody = Resolve(Body);
 
-        var uri = BuildUri(resolvedRoute);
+        Uri uri = BuildUri(resolvedRoute);
         RequestMessage = new HttpRequestMessage(HttpMethod, uri);
 
-        // Attach body for methods that carry one
+        // Attach a body for methods that carry one.
         if (HttpMethod != HttpMethod.Get &&
             HttpMethod != HttpMethod.Delete &&
             HttpMethod != HttpMethod.Head &&
-            HttpMethod != HttpMethod.Options &&
-            !string.IsNullOrEmpty(resolvedBody))
+            HttpMethod != HttpMethod.Options)
         {
-            RequestMessage.Content = new StringContent(
-                resolvedBody, System.Text.Encoding.UTF8, "application/json");
+            if (Files.Count > 0)
+            {
+                MultipartFormDataContent multipart = new();
+                foreach (FileUpload file in Files)
+                {
+                    string filePath = Resolve(file.FilePath);
+                    string fieldName = Resolve(file.FieldName);
+                    FileStream stream = File.OpenRead(filePath);
+                    StreamContent fileContent = new(stream);
+                    multipart.Add(
+                        fileContent,
+                        string.IsNullOrWhiteSpace(fieldName) ? "file" : fieldName,
+                        Path.GetFileName(filePath));
+                }
+
+                RequestMessage.Content = multipart;
+            }
+            else if (!string.IsNullOrEmpty(resolvedBody))
+            {
+                // Check if user specified a custom Content-Type header.
+                string? contentTypeKey = Headers.Keys.FirstOrDefault(k =>
+                    string.Equals(k, "Content-Type", StringComparison.OrdinalIgnoreCase));
+
+                string mediaType = contentTypeKey != null && !string.IsNullOrWhiteSpace(Headers[contentTypeKey])
+                    ? Resolve(Headers[contentTypeKey])
+                    : "application/json";
+
+                RequestMessage.Content = MediaTypeHeaderValue.TryParse(mediaType, out MediaTypeHeaderValue? parsedMediaType)
+                    ? new StringContent(resolvedBody, Encoding.UTF8, parsedMediaType)
+                    : new StringContent(resolvedBody, Encoding.UTF8, "application/json");
+            }
         }
 
-        // Apply custom headers (variable-resolved values)
-        foreach (var (key, value) in Headers)
-            RequestMessage.Headers.TryAddWithoutValidation(key, Resolve(value));
+        // Add custom headers (skip Content-Type here because it is set on req.Content)
+        foreach ((string key, string value) in Headers)
+        {
+            if (RequestMessage.Content != null &&
+                string.Equals(key, "Content-Type", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            RequestMessage.Headers.TryAddWithoutValidation(Resolve(key), Resolve(value));
+        }
 
         // Apply authentication
         ApplyAuth(RequestMessage);
@@ -118,20 +164,22 @@ public class PosterReqRes
             LastExec = DateTime.UtcNow;
         }
 
+        long requestSize = RequestMessage?.Content?.Headers.ContentLength
+            ?? System.Text.Encoding.UTF8.GetByteCount(resolvedBody);
         Metric = Metrics.Update(
-            System.Text.Encoding.UTF8.GetByteCount(resolvedBody),
+            requestSize,
             responseSize,
             Watch.ElapsedMilliseconds);
     }
 
     private Uri BuildUri(string route)
     {
-        var builder = new UriBuilder(route);
+        UriBuilder builder = new UriBuilder(route);
         if (QueryParams.Count == 0)
             return builder.Uri;
 
-        var query = new StringBuilder(builder.Query.TrimStart('?'));
-        foreach (var (key, value) in QueryParams)
+        StringBuilder query = new StringBuilder(builder.Query.TrimStart('?'));
+        foreach ((string key, string value) in QueryParams)
         {
             if (query.Length > 0) query.Append('&');
             query.Append(Uri.EscapeDataString(Resolve(key)))
@@ -162,9 +210,9 @@ public class PosterReqRes
 
             case AuthType.Basic:
                 {
-                    var user = Resolve(Auth.Username);
-                    var pass = Resolve(Auth.Password);
-                    var encoded = Convert.ToBase64String(
+                    string user = Resolve(Auth.Username);
+                    string pass = Resolve(Auth.Password);
+                    string encoded = Convert.ToBase64String(
                         System.Text.Encoding.UTF8.GetBytes($"{user}:{pass}"));
                     req.Headers.Authorization =
                         new AuthenticationHeaderValue("Basic", encoded);

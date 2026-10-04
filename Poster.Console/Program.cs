@@ -28,7 +28,7 @@ internal static class TuiApp
 
         while (true)
         {
-            var choice = AnsiConsole.Prompt(
+            MainChoice choice = AnsiConsole.Prompt(
                 new SelectionPrompt<MainChoice>()
                     .Title("[grey]Main menu[/]")
                     .UseConverter(ChoiceLabel)
@@ -75,22 +75,22 @@ internal static class TuiApp
 
     private static async Task RunNewRequestAsync(bool standalone)
     {
-        var name = AnsiConsole.Ask<string>("Request [cyan]name[/]:", "New Request");
+        string name = AnsiConsole.Ask<string>("Request [cyan]name[/]:", "New Request");
 
         // Method selection — includes all supported verbs
-        var method = AnsiConsole.Prompt(
+        string method = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("HTTP [cyan]method[/]:")
                 .AddChoices("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "Back"));
         if (method == "Back") return;
 
-        var route = AnsiConsole.Ask<string>("[cyan]Route[/] (supports {{base_url}}):");
+        string route = AnsiConsole.Ask<string>("[cyan]Route[/] (supports {{base_url}}):");
         if (!route.StartsWith("http") && !route.Contains("{{"))
             route = "/" + route.TrimStart('/');
 
-        var httpMethod = ParseMethod(method);
+        HttpMethod httpMethod = ParseMethod(method);
 
-        var req = standalone
+        PosterReqRes req = standalone
             ? new PosterReqRes { Name = name, Route = route, HttpMethod = httpMethod }
             : new PosterReqRes(_workspace) { Name = name, Route = route, HttpMethod = httpMethod };
 
@@ -101,8 +101,7 @@ internal static class TuiApp
                          httpMethod != HttpMethod.Options;
         if (wantsBody)
         {
-            var body = AnsiConsole.Ask<string>("JSON [cyan]body[/] (leave blank to skip):", "");
-            if (!string.IsNullOrWhiteSpace(body)) req.Body = body;
+            ConfigureRequestContent(req);
         }
 
         if (AnsiConsole.Confirm("Add query [cyan]parameters[/]?", defaultValue: false))
@@ -113,7 +112,7 @@ internal static class TuiApp
             AddHeaders(req);
 
         // Auth
-        var authType = AnsiConsole.Prompt(
+        AuthType authType = AnsiConsole.Prompt(
             new SelectionPrompt<AuthType>()
                 .Title("[cyan]Authentication[/]:")
                 .AddChoices(Enum.GetValues<AuthType>()));
@@ -128,15 +127,52 @@ internal static class TuiApp
         RenderResult(req);
     }
 
+    private static void ConfigureRequestContent(PosterReqRes req)
+    {
+        string contentType = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Request [cyan]content[/]:")
+                .AddChoices("None", "Text / JSON body", "Multipart file upload"));
+
+        if (contentType == "Text / JSON body")
+        {
+            req.Body = AnsiConsole.Ask<string>("Request [cyan]body[/] (leave blank to skip):", "");
+            return;
+        }
+
+        if (contentType != "Multipart file upload") return;
+
+        string fieldName = AnsiConsole.Ask<string>("Multipart field [cyan]name[/]:", "file");
+        while (true)
+        {
+            string filePath = AnsiConsole.Ask<string>(
+                "File [cyan]path[/] (blank to finish):", "");
+            if (string.IsNullOrWhiteSpace(filePath)) break;
+
+            filePath = Environment.ExpandEnvironmentVariables(filePath.Trim().Trim('"'));
+            if (!File.Exists(filePath))
+            {
+                AnsiConsole.MarkupLine($"[red]File not found:[/] {filePath.EscapeMarkup()}");
+                continue;
+            }
+
+            req.Files.Add(new FileUpload { FilePath = filePath, FieldName = fieldName });
+            AnsiConsole.MarkupLine($"[green]Added:[/] {filePath.EscapeMarkup()}");
+        }
+
+        if (req.Files.Count == 0)
+            AnsiConsole.MarkupLine("[yellow]No files selected; the request will have no body.[/]");
+    }
+
     // ── Header input ──────────────────────────────────────────────────────────
 
     private static void AddHeaders(PosterReqRes req)
     {
         while (true)
         {
-            var key = AnsiConsole.Ask<string>("Header [cyan]name[/] (blank to stop):", "");
+            string key = AnsiConsole.Ask<string>("Header [cyan]name[/] (blank to stop):", "");
             if (string.IsNullOrWhiteSpace(key)) break;
-            var value = AnsiConsole.Ask<string>($"Value for [cyan]{key}[/]:");
+            string value = AnsiConsole.Ask<string>($"Value for [cyan]{key}[/]:");
             req.Headers[key] = value;
         }
     }
@@ -145,16 +181,16 @@ internal static class TuiApp
     {
         while (true)
         {
-            var key = AnsiConsole.Ask<string>("Query [cyan]name[/] (blank to stop):", "");
+            string key = AnsiConsole.Ask<string>("Query [cyan]name[/] (blank to stop):", "");
             if (string.IsNullOrWhiteSpace(key)) break;
-            var value = AnsiConsole.Ask<string>($"Value for [cyan]{key}[/]:");
+            string value = AnsiConsole.Ask<string>($"Value for [cyan]{key}[/]:");
             req.QueryParams[key] = value;
         }
     }
 
     private static async Task SendRequestAsync(PosterReqRes req)
     {
-        using var cancellation = new CancellationTokenSource();
+        using CancellationTokenSource cancellation = new CancellationTokenSource();
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
         {
             eventArgs.Cancel = true;
@@ -204,9 +240,9 @@ internal static class TuiApp
 
         if (_workspace.Variables.Count > 0)
         {
-            var tbl = new Table().BorderColor(Color.Grey).Border(TableBorder.Rounded);
+            Table tbl = new Table().BorderColor(Color.Grey).Border(TableBorder.Rounded);
             tbl.AddColumn("Name").AddColumn("Value");
-            foreach (var (k, v) in _workspace.Variables)
+            foreach ((string k, string v) in _workspace.Variables)
                 tbl.AddRow($"[cyan]{k}[/]", v);
             AnsiConsole.Write(tbl);
         }
@@ -216,22 +252,22 @@ internal static class TuiApp
         }
 
         AnsiConsole.WriteLine();
-        var action = AnsiConsole.Prompt(
+        string action = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("Action:")
                 .AddChoices("Set / update variable", "Delete variable", "Back"));
 
         if (action == "Set / update variable")
         {
-            var key = AnsiConsole.Ask<string>("Variable [cyan]name[/]:");
-            var value = AnsiConsole.Ask<string>($"Value for [cyan]{{{{{key}}}}}[/]:");
+            string key = AnsiConsole.Ask<string>("Variable [cyan]name[/]:");
+            string value = AnsiConsole.Ask<string>($"Value for [cyan]{{{{{key}}}}}[/]:");
             _workspace.Variables[key] = value;
             AnsiConsole.MarkupLine($"[green]Set[/] [cyan]{{{{{key}}}}}[/] = {value}");
         }
         else if (action == "Delete variable")
         {
             if (_workspace.Variables.Count == 0) return;
-            var key = AnsiConsole.Prompt(
+            string key = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("Delete which variable?")
                     .AddChoices(_workspace.Variables.Keys));
@@ -244,7 +280,7 @@ internal static class TuiApp
 
     private static async Task ImportOpenApiAsync()
     {
-        var source = AnsiConsole.Prompt(
+        string source = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("Import OpenAPI spec from:")
                 .AddChoices("Local JSON file", "URL", "Back"));
@@ -254,12 +290,12 @@ internal static class TuiApp
         {
             if (source == "Local JSON file")
             {
-                var path = AnsiConsole.Ask<string>("File [cyan]path[/]:");
+                string path = AnsiConsole.Ask<string>("File [cyan]path[/]:");
                 _workspace.ImportFromOpenApiFile(path);
             }
             else
             {
-                var url = AnsiConsole.Ask<string>("[cyan]URL[/]:");
+                string url = AnsiConsole.Ask<string>("[cyan]URL[/]:");
                 await AnsiConsole.Status()
                     .Spinner(Spinner.Known.Dots)
                     .StartAsync("Fetching spec…", _ =>
@@ -273,7 +309,7 @@ internal static class TuiApp
                 $"[green]Imported[/] {_workspace.Requests.Count} request(s) into workspace.");
 
             // Show any base_url that was auto-set
-            if (_workspace.Variables.TryGetValue("base_url", out var baseUrl))
+            if (_workspace.Variables.TryGetValue("base_url", out string? baseUrl))
                 AnsiConsole.MarkupLine($"[grey]base_url set to:[/] [cyan]{baseUrl}[/]");
         }
         catch (Exception ex)
@@ -295,14 +331,14 @@ internal static class TuiApp
 
         if (req.ResponseMessage == null) return;
 
-        var statusCode = (int)req.ResponseMessage.StatusCode;
-        var statusColor = statusCode is >= 200 and < 300 ? "green" : "red";
-        var header = $"[{statusColor}]{statusCode}[/]  " +
-                     $"[grey]{req.Metric.ElapsedTime} ms  " +
-                     $"↑ {FormatBytes(req.Metric.RequestSize)}  " +
-                     $"↓ {FormatBytes(req.Metric.ResponseSize)}[/]";
+        int statusCode = (int)req.ResponseMessage.StatusCode;
+        string statusColor = statusCode is >= 200 and < 300 ? "green" : "red";
+        string header = $"[{statusColor}]{statusCode}[/]  " +
+                        $"[grey]{req.Metric.ElapsedTime} ms  " +
+                        $"↑ {FormatBytes(req.Metric.RequestSize)}  " +
+                        $"↓ {FormatBytes(req.Metric.ResponseSize)}[/]";
 
-        var body = req.ResponseBody ?? "";
+        string body = req.ResponseBody ?? "";
         IRenderable content = LooksLikeJson(body)
             ? new JsonText(body)
             : new Markup(body.EscapeMarkup());
@@ -316,14 +352,14 @@ internal static class TuiApp
 
     private static void LoadWorkspaceFlow()
     {
-        var files = _workspace.ListLocal();
+        string[] files = _workspace.ListLocal();
         if (files.Length == 0)
         {
             AnsiConsole.MarkupLine("[grey]No workspace files found.[/]");
             return;
         }
 
-        var file = AnsiConsole.Prompt(
+        string file = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("Load which workspace?")
                 .AddChoices(files.Append("Back")));
@@ -352,7 +388,7 @@ internal static class TuiApp
             return;
         }
 
-        var tbl = new Table().BorderColor(Color.Grey).Border(TableBorder.Rounded);
+        Table tbl = new Table().BorderColor(Color.Grey).Border(TableBorder.Rounded);
         tbl.AddColumn("#")
            .AddColumn("Name")
            .AddColumn("Method")
@@ -363,7 +399,7 @@ internal static class TuiApp
 
         for (int i = 0; i < _workspace.Requests.Count; i++)
         {
-            var r = _workspace.Requests[i];
+            PosterReqRes r = _workspace.Requests[i];
             tbl.AddRow(
                 $"{i + 1}",
                 r.Name,
@@ -375,12 +411,12 @@ internal static class TuiApp
         }
         AnsiConsole.Write(tbl);
 
-        var pick = AnsiConsole.Ask<string>(
+        string pick = AnsiConsole.Ask<string>(
             "Select a request by [cyan]#[/] (or blank to go back):", "");
-        if (int.TryParse(pick, out var idx) && idx >= 1 && idx <= _workspace.Requests.Count)
+        if (int.TryParse(pick, out int idx) && idx >= 1 && idx <= _workspace.Requests.Count)
         {
-            var req = _workspace.Requests[idx - 1];
-            var action = AnsiConsole.Prompt(
+            PosterReqRes req = _workspace.Requests[idx - 1];
+            string action = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title($"Request [cyan]{req.Name}[/]")
                     .AddChoices("Run request", "Delete request", "Back"));
@@ -419,7 +455,7 @@ internal static class TuiApp
 
     private static bool LooksLikeJson(string s)
     {
-        var t = s.TrimStart();
+        string t = s.TrimStart();
         return t.StartsWith('{') || t.StartsWith('[');
     }
 

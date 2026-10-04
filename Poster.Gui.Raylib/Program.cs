@@ -1,3 +1,4 @@
+using System.Numerics;
 using Poster.Core;
 using Raylib_cs;
 
@@ -12,7 +13,7 @@ internal static class Program
         Raylib.SetWindowMinSize(1120, 740);
         Raylib.SetTargetFPS(60);
 
-        using var app = new PosterApp();
+        using PosterApp app = new PosterApp();
         while (!Raylib.WindowShouldClose())
         {
             app.Update();
@@ -125,7 +126,7 @@ internal sealed class PosterApp : IDisposable
 
     private void DrawSidebar()
     {
-        var width = 238;
+        int width = 238;
         Raylib.DrawRectangle(0, 0, width, Raylib.GetScreenHeight(), Surface);
         Raylib.DrawRectangle(width - 1, 0, 1, Raylib.GetScreenHeight(), Border);
         Raylib.DrawCircle(30, 34, 13, Accent);
@@ -145,10 +146,10 @@ internal sealed class PosterApp : IDisposable
         DrawSidebarNav("Variables", AppPage.Variables, 238);
 
         Raylib.DrawText("WORKSPACE REQUESTS", 18, 300, 11, Muted);
-        var y = 327f;
-        for (var index = _workspace.Requests.Count - 1; index >= 0 && y < Raylib.GetScreenHeight() - 54; index--)
+        float y = 327f;
+        for (int index = _workspace.Requests.Count - 1; index >= 0 && y < Raylib.GetScreenHeight() - 54; index--)
         {
-            var request = _workspace.Requests[index];
+            PosterReqRes request = _workspace.Requests[index];
             if (Button($"{request.HttpMethod.Method}  {Shorten(request.Name, 17)}",
                     new Rectangle(12, y, 214, 38), _request == request))
                 LoadRequest(request);
@@ -167,11 +168,11 @@ internal sealed class PosterApp : IDisposable
 
     private void DrawTopBar()
     {
-        var left = 260;
+        int left = 260;
         Raylib.DrawRectangle(left, 0, Raylib.GetScreenWidth() - left, 72, Background);
         Raylib.DrawLine(left, 71, Raylib.GetScreenWidth(), 71, Border);
 
-        var title = _page switch
+        string title = _page switch
         {
             AppPage.History => "Request history",
             AppPage.Variables => "Workspace variables",
@@ -201,13 +202,13 @@ internal sealed class PosterApp : IDisposable
 
     private void DrawRequestPage()
     {
-        var contentX = 270f;
-        var width = Raylib.GetScreenWidth();
-        var height = Raylib.GetScreenHeight();
-        var responseX = Math.Max(contentX + 570, width - 438);
-        var editorWidth = responseX - contentX - 20;
-        var responseWidth = width - responseX - 20;
-        var top = 90f;
+        float contentX = 270f;
+        int width = Raylib.GetScreenWidth();
+        int height = Raylib.GetScreenHeight();
+        float responseX = Math.Max(contentX + 570, width - 438);
+        float editorWidth = responseX - contentX - 20;
+        float responseWidth = width - responseX - 20;
+        float top = 90f;
 
         DrawTextField("REQUEST NAME", _name, new Rectangle(contentX, top, editorWidth, 58));
         top += 76;
@@ -228,7 +229,7 @@ internal sealed class PosterApp : IDisposable
         DrawAuthEditor(contentX, top, editorWidth);
         top += _authType == AuthType.None ? 56 : 120;
 
-        var bodyHeight = Math.Max(100, height - top - 28);
+        float bodyHeight = Math.Max(100, height - top - 28);
         DrawTextArea("BODY", _body, new Rectangle(contentX, top, editorWidth, bodyHeight));
 
         DrawResponsePanel(responseX, 90, responseWidth, height - 110);
@@ -237,7 +238,7 @@ internal sealed class PosterApp : IDisposable
     private void DrawAuthEditor(float x, float y, float width)
     {
         Raylib.DrawText("AUTHENTICATION", (int)x, (int)y, 11, Muted);
-        var label = _authType switch
+        string label = _authType switch
         {
             AuthType.None => "None",
             AuthType.Bearer => "Bearer",
@@ -278,30 +279,30 @@ internal sealed class PosterApp : IDisposable
         else if (Button("Send request", new Rectangle(x + width - 150, y + 10, 132, 36), true))
             BeginRequest();
 
-        var response = _request?.ResponseMessage;
-        var status = response == null ? "Waiting for a response" : $"{(int)response.StatusCode}  {response.ReasonPhrase}";
-        var statusColor = response == null ? Muted : response.IsSuccessStatusCode ? Green : Red;
+        HttpResponseMessage? response = _request?.ResponseMessage;
+        string status = response == null ? "Waiting for a response" : $"{(int)response.StatusCode}  {response.ReasonPhrase}";
+        Color statusColor = response == null ? Muted : response.IsSuccessStatusCode ? Green : Red;
         Raylib.DrawText(status, (int)x + 18, (int)y + 66, 18, statusColor);
 
         if (_request != null && _request.LastExec != default)
         {
-            var metrics = $"{_request.Metric.ElapsedTime} ms   ↓ {FormatBytes(_request.Metric.ResponseSize)}";
+            string metrics = $"{_request.Metric.ElapsedTime} ms   ↓ {FormatBytes(_request.Metric.ResponseSize)}";
             Raylib.DrawText(metrics, (int)x + 18, (int)y + 94, 13, Muted);
         }
 
         Raylib.DrawLine((int)x + 16, (int)y + 122, (int)(x + width - 16), (int)y + 122, Border);
-        var bodyY = (int)y + 138;
-        var bodyHeight = (int)height - 154;
-        var error = _request?.Error;
-        var body = error ?? _request?.ResponseBody ?? "Response body will appear here.";
+        int     bodyY      = (int)y + 138;
+        int     bodyHeight = (int)height - 154;
+        string? error      = _request?.Error;
+        string     body       = error ?? _request?.ResponseBody ?? "Response body will appear here.";
         DrawClippedText(body, (int)x + 18, bodyY, (int)width - 36, bodyHeight, error != null ? Red : Text);
     }
 
     private void DrawHistoryPage()
     {
-        var x = 272f;
-        var y = 100f;
-        var width = Raylib.GetScreenWidth() - x - 32;
+        float x = 272f;
+        float y = 100f;
+        float width = Raylib.GetScreenWidth() - x - 32;
         Raylib.DrawText("Saved requests stay with this workspace. Select one to edit and run it again.",
             (int)x, (int)y, 15, Muted);
         y += 42;
@@ -312,9 +313,9 @@ internal sealed class PosterApp : IDisposable
             return;
         }
 
-        for (var index = _workspace.Requests.Count - 1; index >= 0 && y < Raylib.GetScreenHeight() - 70; index--)
+        for (int index = _workspace.Requests.Count - 1; index >= 0 && y < Raylib.GetScreenHeight() - 70; index--)
         {
-            var request = _workspace.Requests[index];
+            PosterReqRes request = _workspace.Requests[index];
             Panel(new Rectangle(x, y, width, 58));
             Raylib.DrawText(request.HttpMethod.Method, (int)x + 14, (int)y + 20, 14, Accent);
             Raylib.DrawText(Shorten(request.Name, 26), (int)x + 102, (int)y + 20, 15, Text);
@@ -334,8 +335,8 @@ internal sealed class PosterApp : IDisposable
 
     private void DrawVariablesPage()
     {
-        var x = 272f;
-        var width = Raylib.GetScreenWidth() - x - 32;
+        float x = 272f;
+        float width = Raylib.GetScreenWidth() - x - 32;
         DrawTextField("VARIABLE NAME", _variableName, new Rectangle(x, 104, width * 0.32f, 60));
         DrawTextField("VALUE", _variableValue, new Rectangle(x + width * 0.34f, 104, width * 0.48f, 60));
         if (Button("Save variable", new Rectangle(x + width - 142, 124, 142, 40), true))
@@ -343,8 +344,8 @@ internal sealed class PosterApp : IDisposable
 
         Raylib.DrawText("Use variables in URLs, headers, query values, and bodies as {{name}}.",
             (int)x, 188, 14, Muted);
-        var y = 230f;
-        foreach (var (key, value) in _workspace.Variables.ToArray())
+        float y = 230f;
+        foreach ((string key, string value) in _workspace.Variables.ToArray())
         {
             Panel(new Rectangle(x, y, width, 52));
             Raylib.DrawText($"{{{{{key}}}}}", (int)x + 14, (int)y + 17, 15, Accent);
@@ -366,10 +367,10 @@ internal sealed class PosterApp : IDisposable
 
     private void DrawWorkspacesPage()
     {
-        var x = 272f;
-        var y = 106f;
-        var width = Raylib.GetScreenWidth() - x - 32;
-        var files = _workspace.ListLocal();
+        float    x     = 272f;
+        float    y     = 106f;
+        float    width = Raylib.GetScreenWidth() - x - 32;
+        string[] files = _workspace.ListLocal();
         Raylib.DrawText("Choose a saved workspace file from the current directory.", (int)x, (int)y, 14, Muted);
         y += 42;
 
@@ -379,7 +380,7 @@ internal sealed class PosterApp : IDisposable
             return;
         }
 
-        foreach (var file in files)
+        foreach (string file in files)
         {
             Panel(new Rectangle(x, y, width, 56));
             Raylib.DrawText(Shorten(Path.GetFileName(file), 60), (int)x + 14, (int)y + 19, 14, Text);
@@ -412,36 +413,36 @@ internal sealed class PosterApp : IDisposable
     private void DrawTextField(string label, TextBuffer buffer, Rectangle bounds, bool secret = false)
     {
         Raylib.DrawText(label, (int)bounds.X, (int)bounds.Y, 10, Muted);
-        var box = new Rectangle(bounds.X, bounds.Y + 19, bounds.Width, bounds.Height - 19);
+        Rectangle box = new Rectangle(bounds.X, bounds.Y + 19, bounds.Width, bounds.Height - 19);
         DrawInputBox(buffer, box, false, secret);
     }
 
     private void DrawTextArea(string label, TextBuffer buffer, Rectangle bounds)
     {
         Raylib.DrawText(label, (int)bounds.X, (int)bounds.Y, 10, Muted);
-        var box = new Rectangle(bounds.X, bounds.Y + 19, bounds.Width, bounds.Height - 19);
+        Rectangle box = new Rectangle(bounds.X, bounds.Y + 19, bounds.Width, bounds.Height - 19);
         DrawInputBox(buffer, box, true, false);
     }
 
     private void DrawInputBox(TextBuffer buffer, Rectangle bounds, bool multiline, bool secret)
     {
-        var active = _focused == buffer;
+        bool active = _focused == buffer;
         Raylib.DrawRectangleRec(bounds, active ? SurfaceRaised : Surface);
         Raylib.DrawRectangleLinesEx(bounds, 1, active ? Accent : Border);
         if (Raylib.IsMouseButtonPressed(MouseButton.Left) && Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), bounds))
             _focused = buffer;
 
-        var value = secret ? new string('•', buffer.Value.Length) : buffer.Value;
-        var lineHeight = 18;
-        var visibleLines = Math.Max(1, ((int)bounds.Height - 12) / lineHeight);
+        string value = secret ? new string('•', buffer.Value.Length) : buffer.Value;
+        int lineHeight = 18;
+        int visibleLines = Math.Max(1, ((int)bounds.Height - 12) / lineHeight);
         Raylib.BeginScissorMode((int)bounds.X + 4, (int)bounds.Y + 4, (int)bounds.Width - 8, (int)bounds.Height - 8);
-        var firstCharacter = 0;
+        int firstCharacter = 0;
         if (multiline)
         {
-            var searchPosition = value.Length;
-            for (var line = 0; line < visibleLines && searchPosition > 0; line++)
+            int searchPosition = value.Length;
+            for (int line = 0; line < visibleLines && searchPosition > 0; line++)
             {
-                var newline = value.LastIndexOf('\n', searchPosition - 1);
+                int newline = value.LastIndexOf('\n', searchPosition - 1);
                 if (newline < 0)
                 {
                     firstCharacter = 0;
@@ -452,15 +453,15 @@ internal sealed class PosterApp : IDisposable
             }
         }
 
-        var position = firstCharacter;
-        var drawnLines = 0;
+        int position = firstCharacter;
+        int drawnLines = 0;
         while (drawnLines < visibleLines && position <= value.Length)
         {
-            var newline = multiline ? value.IndexOf('\n', position) : -1;
-            var end = newline < 0 ? value.Length : newline;
-            var length = end - position;
+            int newline = multiline ? value.IndexOf('\n', position) : -1;
+            int end = newline < 0 ? value.Length : newline;
+            int length = end - position;
             if (length > 0 && value[position + length - 1] == '\r') length--;
-            var lineText = value.Substring(position, length);
+            string lineText = value.Substring(position, length);
             Raylib.DrawText(lineText, (int)bounds.X + 10, (int)bounds.Y + 8 + drawnLines * lineHeight, 14, Text);
             drawnLines++;
             if (newline < 0) break;
@@ -468,14 +469,14 @@ internal sealed class PosterApp : IDisposable
         }
         if (active && buffer.Cursor >= firstCharacter && Raylib.GetTime() % 1 < 0.5)
         {
-            var cursorSearchIndex = buffer.Cursor == 0 ? -1 : buffer.Cursor - 1;
-            var cursorLineStart = cursorSearchIndex < 0 ? 0 : value.LastIndexOf('\n', cursorSearchIndex) + 1;
-            var cursorPrefix = value.Substring(cursorLineStart, buffer.Cursor - cursorLineStart);
-            var cursorLine = 0;
-            for (var index = firstCharacter; multiline && index < buffer.Cursor; index++)
+            int cursorSearchIndex = buffer.Cursor == 0 ? -1 : buffer.Cursor - 1;
+            int cursorLineStart = cursorSearchIndex < 0 ? 0 : value.LastIndexOf('\n', cursorSearchIndex) + 1;
+            string cursorPrefix = value.Substring(cursorLineStart, buffer.Cursor - cursorLineStart);
+            int cursorLine = 0;
+            for (int index = firstCharacter; multiline && index < buffer.Cursor; index++)
                 if (value[index] == '\n') cursorLine++;
-            var cursorX = (int)bounds.X + 10 + Raylib.MeasureText(cursorPrefix, 14);
-            var cursorY = (int)bounds.Y + 8 + cursorLine * lineHeight;
+            int cursorX = (int)bounds.X + 10 + Raylib.MeasureText(cursorPrefix, 14);
+            int cursorY = (int)bounds.Y + 8 + cursorLine * lineHeight;
             Raylib.DrawRectangle(cursorX, cursorY, 1, 16, Accent);
         }
         Raylib.EndScissorMode();
@@ -484,17 +485,17 @@ internal sealed class PosterApp : IDisposable
     private void DrawClippedText(string value, int x, int y, int width, int height, Color color)
     {
         Raylib.BeginScissorMode(x, y, width, height);
-        var lineHeight = 18;
-        var maxLines = Math.Max(1, height / lineHeight);
-        var maxCharacters = Math.Max(12, width / 8);
-        var position = 0;
-        for (var index = 0; index < maxLines && position <= value.Length; index++)
+        int lineHeight = 18;
+        int maxLines = Math.Max(1, height / lineHeight);
+        int maxCharacters = Math.Max(12, width / 8);
+        int position = 0;
+        for (int index = 0; index < maxLines && position <= value.Length; index++)
         {
-            var end = value.IndexOf('\n', position);
+            int end = value.IndexOf('\n', position);
             if (end < 0) end = value.Length;
-            var length = end - position;
+            int length = end - position;
             if (length > 0 && value[position + length - 1] == '\r') length--;
-            var visibleLength = Math.Min(length, maxCharacters);
+            int visibleLength = Math.Min(length, maxCharacters);
             Raylib.DrawText(value.Substring(position, visibleLength), x, y + index * lineHeight, 13, color);
             if (end == value.Length) break;
             position = end + 1;
@@ -504,9 +505,9 @@ internal sealed class PosterApp : IDisposable
 
     private bool Button(string label, Rectangle bounds, bool primary = false)
     {
-        var mouse = Raylib.GetMousePosition();
-        var hovered = Raylib.CheckCollisionPointRec(mouse, bounds);
-        var fill = primary ? Accent : hovered ? SurfaceRaised : Surface;
+        Vector2 mouse = Raylib.GetMousePosition();
+        CBool hovered = Raylib.CheckCollisionPointRec(mouse, bounds);
+        Color fill = primary ? Accent : hovered ? SurfaceRaised : Surface;
         Raylib.DrawRectangleRec(bounds, fill);
         Raylib.DrawRectangleLinesEx(bounds, 1, primary ? Accent : Border);
         Raylib.DrawText(label, (int)bounds.X + 12, (int)bounds.Y + ((int)bounds.Height - 16) / 2, 14,
@@ -523,7 +524,7 @@ internal sealed class PosterApp : IDisposable
     private void UpdateTextInput()
     {
         if (_focused == null) return;
-        var codepoint = Raylib.GetCharPressed();
+        int codepoint = Raylib.GetCharPressed();
         while (codepoint > 0)
         {
             if (!char.IsControl((char)codepoint) && _focused.Value.Length < 20000)
@@ -670,7 +671,7 @@ internal sealed class PosterApp : IDisposable
 
     private void SaveVariable()
     {
-        var key = _variableName.Value.Trim();
+        string key = _variableName.Value.Trim();
         if (key.Length == 0)
         {
             SetNotice("Variable name is required");
@@ -702,8 +703,8 @@ internal sealed class PosterApp : IDisposable
 
     private void DrawNotice()
     {
-        var textWidth = Math.Min(Raylib.MeasureText(_notice, 14) + 36, Raylib.GetScreenWidth() - 32);
-        var bounds = new Rectangle(Raylib.GetScreenWidth() - textWidth - 18, Raylib.GetScreenHeight() - 54, textWidth, 38);
+        int textWidth = Math.Min(Raylib.MeasureText(_notice, 14) + 36, Raylib.GetScreenWidth() - 32);
+        Rectangle bounds = new Rectangle(Raylib.GetScreenWidth() - textWidth - 18, Raylib.GetScreenHeight() - 54, textWidth, 38);
         Raylib.DrawRectangleRec(bounds, SurfaceRaised);
         Raylib.DrawRectangleLinesEx(bounds, 1, Border);
         Raylib.DrawText(Shorten(_notice, Math.Max(16, (int)textWidth / 8)),
@@ -718,12 +719,12 @@ internal sealed class PosterApp : IDisposable
 
     private static Dictionary<string, string> ParsePairs(string text)
     {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var line in text.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string line in text.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
-            var separator = line.IndexOf('=');
+            int separator = line.IndexOf('=');
             if (separator <= 0) continue;
-            var key = line[..separator].Trim();
+            string key = line[..separator].Trim();
             if (key.Length > 0)
                 result[key] = line[(separator + 1)..].Trim();
         }
@@ -752,7 +753,7 @@ internal sealed class PosterApp : IDisposable
         catch (OperationCanceledException) { }
         _requestCancellation?.Dispose();
         _workspace.Client.Dispose();
-        foreach (var request in _workspace.Requests)
+        foreach (PosterReqRes request in _workspace.Requests)
         {
             request.ResponseMessage?.Dispose();
             request.RequestMessage?.Dispose();
@@ -803,13 +804,13 @@ internal sealed class PosterApp : IDisposable
 
         public void MoveHome()
         {
-            var searchIndex = Cursor == 0 ? -1 : Cursor - 1;
+            int searchIndex = Cursor == 0 ? -1 : Cursor - 1;
             Cursor = searchIndex < 0 ? 0 : Value.LastIndexOf('\n', searchIndex) + 1;
         }
 
         public void MoveEnd()
         {
-            var newline = Value.IndexOf('\n', Cursor);
+            int newline = Value.IndexOf('\n', Cursor);
             Cursor = newline < 0 ? Value.Length : newline;
         }
     }

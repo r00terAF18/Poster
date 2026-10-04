@@ -49,7 +49,7 @@ public class Workspace
         if (!File.Exists(filePath)) return;
         string json = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
         if (json.Length <= 10) return;
-        var w = JsonSerializer.Deserialize(json, PosterJsonContext.Default.Workspace);
+        Workspace? w = JsonSerializer.Deserialize(json, PosterJsonContext.Default.Workspace);
         if (w != null) load(w);
     }
 
@@ -69,42 +69,53 @@ public class Workspace
     /// </summary>
     public void ImportFromOpenApiUrl(string url)
     {
-        using var http = new HttpClient();
+        using HttpClient http = new HttpClient();
         string json = http.GetStringAsync(url).GetAwaiter().GetResult();
-        ImportOpenApiJson(json);
+        Uri specUri = new Uri(url, UriKind.Absolute);
+        ImportOpenApiJson(json, specUri.GetLeftPart(UriPartial.Authority));
     }
 
     // ── OpenAPI parser ────────────────────────────────────────────────────────
 
-    private void ImportOpenApiJson(string json)
+    private void ImportOpenApiJson(string json, string? fallbackBaseUrl = null)
     {
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+        using JsonDocument doc = JsonDocument.Parse(json);
+        JsonElement root = doc.RootElement;
 
-        // Derive a base URL from the first server entry, if present, and store as a variable
-        if (root.TryGetProperty("servers", out var servers) &&
+        // Prefer the first declared server, falling back to the source URL's origin.
+        string? baseUrl = fallbackBaseUrl;
+        if (root.TryGetProperty("servers", out JsonElement servers) &&
             servers.ValueKind == JsonValueKind.Array &&
             servers.GetArrayLength() > 0)
         {
-            string serverUrl = servers[0].GetProperty("url").GetString() ?? "";
-            if (!string.IsNullOrEmpty(serverUrl))
-                Variables.TryAdd("base_url", serverUrl.TrimEnd('/'));
+            JsonElement firstServer = servers[0];
+            if (firstServer.ValueKind == JsonValueKind.Object &&
+                firstServer.TryGetProperty("url", out JsonElement serverUrlElement) &&
+                serverUrlElement.ValueKind == JsonValueKind.String)
+            {
+                string? serverUrl = serverUrlElement.GetString();
+                if (!string.IsNullOrWhiteSpace(serverUrl))
+                    baseUrl = serverUrl;
+            }
         }
 
-        if (!root.TryGetProperty("paths", out var paths)) return;
+        if (!string.IsNullOrWhiteSpace(baseUrl))
+            Variables.TryAdd("base_url", baseUrl.TrimEnd('/'));
 
-        foreach (var pathProp in paths.EnumerateObject())
+        if (!root.TryGetProperty("paths", out JsonElement paths)) return;
+
+        foreach (JsonProperty pathProp in paths.EnumerateObject())
         {
             string path = pathProp.Name; // e.g. "/users/{id}"
-            foreach (var methodProp in pathProp.Value.EnumerateObject())
+            foreach (JsonProperty methodProp in pathProp.Value.EnumerateObject())
             {
                 string methodStr = methodProp.Name.ToUpperInvariant();
-                if (!TryParseMethod(methodStr, out var method)) continue;
+                if (!TryParseMethod(methodStr, out HttpMethod method)) continue;
 
-                var op = methodProp.Value;
-                string summary = op.TryGetProperty("summary", out var s) ? s.GetString() ?? path : path;
+                JsonElement op = methodProp.Value;
+                string summary = op.TryGetProperty("summary", out JsonElement s) ? s.GetString() ?? path : path;
 
-                var req = new PosterReqRes(this)
+                PosterReqRes req = new PosterReqRes(this)
                 {
                     Name = summary,
                     Route = "{{base_url}}" + path,
@@ -112,12 +123,13 @@ public class Workspace
                 };
 
                 // Pull a request-body example if present
-                if (op.TryGetProperty("requestBody", out var body) &&
-                    body.TryGetProperty("content", out var content))
+                if (op.TryGetProperty("requestBody", out JsonElement body) &&
+                    body.TryGetProperty("content", out JsonElement content))
                 {
-                    foreach (var mediaType in content.EnumerateObject())
+                    foreach (JsonProperty mediaType in content.EnumerateObject())
                     {
-                        if (mediaType.Value.TryGetProperty("example", out var example))
+                        req.Headers.TryAdd("Content-Type", mediaType.Name);
+                        if (mediaType.Value.TryGetProperty("example", out JsonElement example))
                         {
                             req.Body = example.GetRawText();
                             break;
@@ -157,7 +169,7 @@ public class Workspace
         Name = w.Name;
         Variables = w.Variables;
         Requests = w.Requests;
-        foreach (var req in Requests)
+        foreach (PosterReqRes req in Requests)
             req.SetParent(this);
     }
 }

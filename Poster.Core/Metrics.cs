@@ -8,13 +8,13 @@ public struct Metrics
 
     public Metrics() { }
 
-    public Metrics(long[] args)
+    public Metrics(long[]? metrics)
     {
-        if (args.Length is > 0 and <= 3)
+        if (metrics != null && metrics.Length > 0)
         {
-            RequestSize = args[0];
-            ResponseSize = args[1];
-            ElapsedTime = args[2];
+            RequestSize  = metrics.Length > 0 ? metrics[0] : 0;
+            ResponseSize = metrics.Length > 1 ? metrics[1] : 0;
+            ElapsedTime  = metrics.Length > 2 ? metrics[2] : 0;
         }
     }
 
