@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json.Serialization;
@@ -33,15 +33,46 @@ public class Workspace
             Variables.TryGetValue(m.Groups[1].Value, out string? val) ? val : m.Value);
     }
 
-    public void Save()
+    /// <summary>Per-user folder where workspaces are saved (e.g. %AppData%/Poster).</summary>
+    public static string DefaultDirectory { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Poster");
+
+    /// <summary>Saves this workspace into <see cref="DefaultDirectory"/> and returns the file path.</summary>
+    public string Save()
     {
+        Directory.CreateDirectory(DefaultDirectory);
+        string path = Path.Combine(DefaultDirectory, $"{Name}-{Id}.json");
         string json = JsonSerializer.Serialize(this, PosterJsonContext.Default.Workspace);
-        File.WriteAllText($"Workspace-{Id}.json", json);
+        File.WriteAllText(path, json);
+        return path;
+    }
+
+    /// <summary>Reads just the workspace name from a saved file, or null if it cannot be read.</summary>
+    public static string? ReadName(string filePath)
+    {
+        try
+        {
+            using FileStream stream = File.OpenRead(filePath);
+            using JsonDocument doc = JsonDocument.Parse(stream);
+            return doc.RootElement.TryGetProperty("Name", out JsonElement name) &&
+                   name.ValueKind == JsonValueKind.String
+                ? name.GetString()
+                : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     public string[] ListLocal()
     {
         HashSet<string> files = new(StringComparer.OrdinalIgnoreCase);
+        if (Directory.Exists(DefaultDirectory))
+            foreach (string file in Directory.EnumerateFiles(DefaultDirectory, "Workspace*.json"))
+                files.Add(file);
+
+        // Legacy locations (older versions saved next to the working directory).
         AddWorkspaceFiles(Directory.GetCurrentDirectory(), files);
         AddWorkspaceFiles(AppContext.BaseDirectory, files);
         return files.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -78,17 +109,18 @@ public class Workspace
         ImportOpenApiJson(json);
     }
 
-    /// <summary>
-    /// Imports requests from an OpenAPI 3.x spec fetched from a URL.
-    /// Blocks synchronously — call from a background context or wrap in Task.Run if needed.
-    /// </summary>
-    public void ImportFromOpenApiUrl(string url)
+    /// <summary>Imports requests from an OpenAPI 3.x spec fetched from a URL.</summary>
+    public async Task ImportFromOpenApiUrlAsync(string url, CancellationToken cancellationToken = default)
     {
-        using HttpClient http = new HttpClient();
-        string json = http.GetStringAsync(url).GetAwaiter().GetResult();
-        Uri specUri = new Uri(url, UriKind.Absolute);
+        Uri specUri = new(url, UriKind.Absolute);
+        string json = await Client.GetStringAsync(specUri, cancellationToken);
         ImportOpenApiJson(json, specUri.GetLeftPart(UriPartial.Authority));
     }
+
+    /// <summary>Blocking variant kept for the console client. Prefer <see cref="ImportFromOpenApiUrlAsync"/>.</summary>
+    [Obsolete("Blocks the calling thread; use ImportFromOpenApiUrlAsync.")]
+    public void ImportFromOpenApiUrl(string url) =>
+        ImportFromOpenApiUrlAsync(url).GetAwaiter().GetResult();
 
     // ── OpenAPI parser ────────────────────────────────────────────────────────
 

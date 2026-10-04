@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Poster.Desktop.ViewModels"
+             x:Class="Poster.Desktop.Views.HistoryView"
+             x:DataType="vm:HistoryViewModel">
+
+  <Grid>
+    <TextBlock Classes="subtitle"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               Text="Nothing here yet. Requests you send or save show up in this list."
+               IsVisible="{Binding IsEmpty}" />
+
+    <ScrollViewer>
+      <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,12,0">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="12" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HistoryItem">
+            <Border Classes="card" Padding="22,14">
+              <Grid ColumnDefinitions="76,*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="method" VerticalAlignment="Center" Text="{Binding Method}" />
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                  <TextBlock FontWeight="Medium" TextTrimming="CharacterEllipsis" Text="{Binding Name}" />
+                  <TextBlock Classes="subtitle" TextTrimming="CharacterEllipsis" Text="{Binding Route}" />
+                </StackPanel>
+                <Button Grid.Column="2" Classes="compact" Content="Open" Command="{Binding OpenCommand}" />
+                <Button Grid.Column="3" Classes="compact danger" Content="Delete" Command="{Binding DeleteCommand}" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="Poster.Console/Poster.Console.csproj" />
   <Project Path="Poster.Core/Poster.Core.csproj" />
+  <Project Path="Poster.Gui.Avalonia/Poster.Gui.Avalonia.csproj" />
   <Project Path="Poster.Gui.Raylib/Poster.Gui.Raylib.csproj" />
 </Solution>

@@ -1,0 +1,197 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- One UI control styling, layered over FluentTheme. Colours come from Tokens.axaml. -->
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource OneUiBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource OneUiText}" />
+    <Setter Property="FontSize" Value="15" />
+  </Style>
+
+  <!-- Typography -->
+  <Style Selector="TextBlock.title">
+    <Setter Property="FontSize" Value="32" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.subtitle">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Foreground" Value="{DynamicResource OneUiTextSecondary}" />
+  </Style>
+  <Style Selector="TextBlock.section">
+    <Setter Property="FontSize" Value="17" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.label">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{DynamicResource OneUiTextSecondary}" />
+  </Style>
+  <Style Selector="TextBlock.method">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource OneUiAccentText}" />
+  </Style>
+
+  <!-- Cards: big rounded surfaces, no borders -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource OneUiCard}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource OneUiCardRadius}" />
+    <Setter Property="Padding" Value="20" />
+  </Style>
+  <Style Selector="Border.divider">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource OneUiDivider}" />
+  </Style>
+
+  <!-- Buttons: pill shaped. Default = tonal, .accent = filled, .text = flat -->
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="{DynamicResource OneUiPillRadius}" />
+    <Setter Property="MinHeight" Value="48" />
+    <Setter Property="Padding" Value="24,0" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.compact">
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="CornerRadius" Value="20" />
+    <Setter Property="Padding" Value="18,0" />
+  </Style>
+  <Style Selector="Button.text">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource OneUiAccentText}" />
+  </Style>
+  <Style Selector="Button.text /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource OneUiAccentText}" />
+  </Style>
+  <Style Selector="Button.danger">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource OneUiDanger}" />
+  </Style>
+  <Style Selector="Button.danger /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource OneUiDanger}" />
+  </Style>
+
+  <!-- Text fields: tonal, borderless, accent ring on focus -->
+  <Style Selector="TextBox">
+    <Setter Property="CornerRadius" Value="20" />
+    <Setter Property="MinHeight" Value="48" />
+    <Setter Property="Padding" Value="18,13" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBox.mono">
+    <Setter Property="FontFamily" Value="Cascadia Code, Consolas, Menlo, Monaco, monospace" />
+    <Setter Property="FontSize" Value="13.5" />
+  </Style>
+  <Style Selector="TextBox.area">
+    <Setter Property="AcceptsReturn" Value="True" />
+    <Setter Property="TextWrapping" Value="NoWrap" />
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="MinHeight" Value="96" />
+    <Setter Property="CornerRadius" Value="22" />
+    <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
+    <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+  </Style>
+  <!-- .plain: no fill or ring in any state (page-title field, read-only response) -->
+  <Style Selector="TextBox.plain /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="TextBox.plain:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="TextBox.plain:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="TextBox.heading">
+    <Setter Property="FontSize" Value="22" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Padding" Value="0,8" />
+  </Style>
+
+  <!-- Combo boxes -->
+  <Style Selector="ComboBox">
+    <Setter Property="CornerRadius" Value="{DynamicResource OneUiPillRadius}" />
+    <Setter Property="MinHeight" Value="48" />
+    <Setter Property="Padding" Value="20,0,14,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+  <Style Selector="ComboBoxItem">
+    <Setter Property="CornerRadius" Value="16" />
+    <Setter Property="MinHeight" Value="42" />
+    <Setter Property="Padding" Value="16,0" />
+    <Setter Property="Margin" Value="6,2" />
+  </Style>
+
+  <!-- Pill selector: ListBox.pills turns a ListBox into One UI style segmented pills -->
+  <Style Selector="ListBox.pills">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+    <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <StackPanel Orientation="Horizontal" Spacing="4" />
+      </ItemsPanelTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ListBox.pills > ListBoxItem">
+    <Setter Property="CornerRadius" Value="20" />
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Padding" Value="18,0" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{DynamicResource OneUiTextSecondary}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ListBox.pills.compact > ListBoxItem">
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="Padding" Value="16,0" />
+    <Setter Property="FontSize" Value="14" />
+  </Style>
+  <Style Selector="ListBox.pills > ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource OneUiAccentSoft}" />
+    <Setter Property="Foreground" Value="{DynamicResource OneUiAccentText}" />
+  </Style>
+
+  <!-- Status chip -->
+  <Style Selector="Border.chip">
+    <Setter Property="Background" Value="{DynamicResource OneUiField}" />
+    <Setter Property="CornerRadius" Value="16" />
+    <Setter Property="Padding" Value="14,6" />
+  </Style>
+  <Style Selector="Border.chip.ok">
+    <Setter Property="Background" Value="{DynamicResource OneUiSuccessSoft}" />
+  </Style>
+  <Style Selector="Border.chip.ok > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource OneUiSuccess}" />
+  </Style>
+  <Style Selector="Border.chip.err">
+    <Setter Property="Background" Value="{DynamicResource OneUiDangerSoft}" />
+  </Style>
+  <Style Selector="Border.chip.err > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource OneUiDanger}" />
+  </Style>
+
+  <!-- Toast -->
+  <Style Selector="Border.toast">
+    <Setter Property="Background" Value="{DynamicResource OneUiToast}" />
+    <Setter Property="CornerRadius" Value="24" />
+    <Setter Property="Padding" Value="22,13" />
+  </Style>
+  <Style Selector="Border.toast > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource OneUiToastText}" />
+  </Style>
+
+  <!-- Progress -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground" Value="{DynamicResource OneUiAccent}" />
+    <Setter Property="Background" Value="{DynamicResource OneUiField}" />
+    <Setter Property="MinHeight" Value="4" />
+    <Setter Property="CornerRadius" Value="2" />
+  </Style>
+
+</Styles>

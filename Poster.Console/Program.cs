@@ -298,11 +298,7 @@ internal static class TuiApp
                 string url = AnsiConsole.Ask<string>("[cyan]URL[/]:");
                 await AnsiConsole.Status()
                     .Spinner(Spinner.Known.Dots)
-                    .StartAsync("Fetching spec…", _ =>
-                    {
-                        _workspace.ImportFromOpenApiUrl(url);
-                        return Task.CompletedTask;
-                    });
+                    .StartAsync("Fetching spec…", _ => _workspace.ImportFromOpenApiUrlAsync(url));
             }
 
             AnsiConsole.MarkupLine(

@@ -1,0 +1,51 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Poster.Desktop.ViewModels"
+             x:Class="Poster.Desktop.Views.VariablesView"
+             x:DataType="vm:VariablesViewModel">
+
+  <Grid RowDefinitions="Auto,*" RowSpacing="16">
+
+    <Border Grid.Row="0" Classes="card">
+      <StackPanel Spacing="14">
+        <Grid ColumnDefinitions="*,2*,Auto" ColumnSpacing="10">
+          <TextBox Grid.Column="0" Classes="mono" Watermark="name" Text="{Binding NewKey}" />
+          <TextBox Grid.Column="1" Classes="mono" Watermark="value" Text="{Binding NewValue}" />
+          <Button Grid.Column="2" Classes="accent" Content="Save" Command="{Binding SaveVariableCommand}" />
+        </Grid>
+        <TextBlock Classes="label" TextWrapping="Wrap"
+                   Text="Use a variable in URLs, headers, query values and bodies by writing it in double curly braces, e.g. {{base_url}}." />
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="1">
+      <TextBlock Classes="subtitle"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 Text="No variables yet."
+                 IsVisible="{Binding IsEmpty}" />
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,12,0">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="12" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:VariableItem">
+              <Border Classes="card" Padding="22,14">
+                <Grid ColumnDefinitions="220,*,Auto,Auto" ColumnSpacing="8">
+                  <TextBlock Grid.Column="0" Classes="method" FontFamily="Cascadia Code, Consolas, Menlo, monospace" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding Placeholder}" />
+                  <TextBlock Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding Value}" />
+                  <Button Grid.Column="2" Classes="compact" Content="Edit" Command="{Binding EditCommand}" />
+                  <Button Grid.Column="3" Classes="compact danger" Content="Remove" Command="{Binding RemoveCommand}" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Grid>
+
+  </Grid>
+</UserControl>

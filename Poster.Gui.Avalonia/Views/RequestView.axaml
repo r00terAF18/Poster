@@ -1,0 +1,133 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Poster.Desktop.ViewModels"
+             x:Class="Poster.Desktop.Views.RequestView"
+             x:DataType="vm:RequestViewModel">
+
+  <Grid RowDefinitions="Auto,*,*" RowSpacing="16">
+
+    <!-- Method + URL + Send -->
+    <Border Grid.Row="0" Classes="card" Padding="12">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+        <ComboBox Grid.Column="0"
+                  Width="124"
+                  ItemsSource="{Binding Methods}"
+                  SelectedIndex="{Binding SelectedMethodIndex}" />
+        <TextBox Grid.Column="1"
+                 Classes="mono"
+                 Watermark="https://api.example.com/{{path}}"
+                 Text="{Binding Route}" />
+        <Button Grid.Column="2"
+                Classes="accent"
+                Width="104"
+                Content="Send"
+                Command="{Binding SendCommand}"
+                IsVisible="{Binding !IsSending}" />
+        <Button Grid.Column="2"
+                Width="104"
+                Content="Cancel"
+                Command="{Binding SendCancelCommand}"
+                IsVisible="{Binding IsSending}" />
+      </Grid>
+    </Border>
+
+    <!-- Request details -->
+    <Border Grid.Row="1" Classes="card">
+      <Grid RowDefinitions="Auto,Auto,*">
+
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+          <TextBox Grid.Column="0"
+                   Classes="plain heading"
+                   Watermark="Untitled request"
+                   Text="{Binding Name}" />
+          <Button Grid.Column="1" Classes="text compact" Content="New" Command="{Binding NewRequestCommand}" />
+          <Button Grid.Column="2" Classes="compact" Content="Save" Command="{Binding SaveRequestCommand}" />
+        </Grid>
+
+        <ListBox Grid.Row="1"
+                 Classes="pills compact"
+                 Margin="0,4,0,14"
+                 HorizontalAlignment="Left"
+                 ItemsSource="{Binding Sections}"
+                 SelectedIndex="{Binding SelectedSectionIndex}" />
+
+        <Grid Grid.Row="2">
+
+          <Grid RowDefinitions="Auto,*" RowSpacing="8" IsVisible="{Binding IsParamsSection}">
+            <TextBlock Grid.Row="0" Classes="label" Text="One key=value per line" />
+            <TextBox Grid.Row="1" Classes="area mono" Text="{Binding QueryText}" />
+          </Grid>
+
+          <Grid RowDefinitions="Auto,*" RowSpacing="8" IsVisible="{Binding IsHeadersSection}">
+            <TextBlock Grid.Row="0" Classes="label" Text="One name=value per line" />
+            <TextBox Grid.Row="1" Classes="area mono" Text="{Binding HeadersText}" />
+          </Grid>
+
+          <StackPanel Spacing="14" IsVisible="{Binding IsAuthSection}">
+            <ComboBox HorizontalAlignment="Left"
+                      MinWidth="220"
+                      ItemsSource="{Binding AuthTypes}"
+                      SelectedIndex="{Binding SelectedAuthIndex}" />
+
+            <TextBlock Classes="subtitle" Text="This request is sent without authentication." IsVisible="{Binding ShowNoAuth}" />
+
+            <StackPanel Spacing="6" IsVisible="{Binding ShowApiKeyHeader}">
+              <TextBlock Classes="label" Text="Header name" />
+              <TextBox Classes="mono" Text="{Binding ApiKeyHeader}" />
+            </StackPanel>
+
+            <StackPanel Spacing="6" IsVisible="{Binding ShowToken}">
+              <TextBlock Classes="label" Text="Token" />
+              <TextBox Classes="mono" Text="{Binding Token}" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="12" IsVisible="{Binding ShowBasic}">
+              <StackPanel Grid.Column="0" Spacing="6">
+                <TextBlock Classes="label" Text="Username" />
+                <TextBox Text="{Binding Username}" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="6">
+                <TextBlock Classes="label" Text="Password" />
+                <TextBox PasswordChar="•" Text="{Binding Password}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+
+          <TextBox Classes="area mono"
+                   Watermark="Request body"
+                   IsVisible="{Binding IsBodySection}"
+                   Text="{Binding Body}" />
+
+        </Grid>
+      </Grid>
+    </Border>
+
+    <!-- Response -->
+    <Border Grid.Row="2" Classes="card">
+      <Grid RowDefinitions="Auto,*">
+
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" MinHeight="34">
+          <TextBlock Grid.Column="0" Classes="section" Text="Response" VerticalAlignment="Center" IsVisible="{Binding !HasResponse}" />
+          <Border Grid.Column="0"
+                  Classes="chip"
+                  Classes.ok="{Binding IsSuccess}"
+                  Classes.err="{Binding IsFailure}"
+                  IsVisible="{Binding HasResponse}">
+            <TextBlock FontWeight="SemiBold" Text="{Binding StatusText}" />
+          </Border>
+          <TextBlock Grid.Column="1" Classes="subtitle" VerticalAlignment="Center" Text="{Binding MetricsText}" />
+          <ProgressBar Grid.Column="2" Width="90" VerticalAlignment="Center" IsIndeterminate="True" IsVisible="{Binding IsSending}" />
+        </Grid>
+
+        <TextBox Grid.Row="1"
+                 Classes="area mono plain"
+                 Margin="-18,6,-18,-10"
+                 IsReadOnly="True"
+                 TextWrapping="Wrap"
+                 Watermark="Send a request to see the response here."
+                 Text="{Binding ResponseText, Mode=OneWay}" />
+      </Grid>
+    </Border>
+
+  </Grid>
+</UserControl>

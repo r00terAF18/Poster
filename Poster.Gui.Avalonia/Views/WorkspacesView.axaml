@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Poster.Desktop.ViewModels"
+             x:Class="Poster.Desktop.Views.WorkspacesView"
+             x:DataType="vm:WorkspacesViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="16" Margin="0,0,12,0">
+
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Classes="section" Text="Workspace" />
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+            <TextBox Grid.Column="0" Watermark="Workspace name" Text="{Binding Name}" />
+            <Button Grid.Column="1" Content="Rename" Command="{Binding ApplyNameCommand}" />
+            <Button Grid.Column="2" Classes="accent" Content="Save" Command="{Binding SaveWorkspaceCommand}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="section" VerticalAlignment="Center" Text="Saved workspaces" />
+            <Button Grid.Column="1" Classes="text compact" Content="Refresh" Command="{Binding RefreshFilesCommand}" />
+          </Grid>
+          <TextBlock Classes="subtitle" Text="No saved workspaces found yet." IsVisible="{Binding HasNoFiles}" />
+          <ItemsControl ItemsSource="{Binding Files}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="4" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:WorkspaceFileItem">
+                <Grid ColumnDefinitions="*,Auto" Margin="0,6">
+                  <StackPanel Spacing="2" VerticalAlignment="Center">
+                    <TextBlock FontWeight="Medium" TextTrimming="CharacterEllipsis" Text="{Binding Name}" />
+                    <TextBlock Classes="subtitle" TextTrimming="CharacterEllipsis" Text="{Binding FileName}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="compact" Content="Load" Command="{Binding LoadCommand}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Classes="section" Text="Import OpenAPI" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <TextBox Grid.Column="0" Classes="mono" Watermark="https://api.example.com/openapi.json" Text="{Binding ImportUrl}" />
+            <Button Grid.Column="1" Classes="accent" Content="Import" Command="{Binding ImportCommand}" IsEnabled="{Binding !IsImporting}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="section" VerticalAlignment="Center" Text="Dark mode" />
+          <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" IsChecked="{Binding IsDarkMode}" />
+        </Grid>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

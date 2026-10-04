@@ -71,6 +71,7 @@ public class PosterReqRes
     public async Task SendAsync(CancellationToken cancellationToken = default)
     {
         Error = null;
+        long requestSize = 0;
         long responseSize = 0;
         Watch.Reset();
 
@@ -80,67 +81,32 @@ public class PosterReqRes
         ResponseMessage = null;
         ResponseBody = null;
 
-        // Resolve variables in route and body
-        string resolvedRoute = Resolve(Route);
-        string resolvedBody = Resolve(Body);
-
-        Uri uri = BuildUri(resolvedRoute);
-        RequestMessage = new HttpRequestMessage(HttpMethod, uri);
-
-        // Attach a body for methods that carry one.
-        if (HttpMethod != HttpMethod.Get &&
-            HttpMethod != HttpMethod.Delete &&
-            HttpMethod != HttpMethod.Head &&
-            HttpMethod != HttpMethod.Options)
-        {
-            if (Files.Count > 0)
-            {
-                MultipartFormDataContent multipart = new();
-                foreach (FileUpload file in Files)
-                {
-                    string filePath = Resolve(file.FilePath);
-                    string fieldName = Resolve(file.FieldName);
-                    FileStream stream = File.OpenRead(filePath);
-                    StreamContent fileContent = new(stream);
-                    multipart.Add(
-                        fileContent,
-                        string.IsNullOrWhiteSpace(fieldName) ? "file" : fieldName,
-                        Path.GetFileName(filePath));
-                }
-
-                RequestMessage.Content = multipart;
-            }
-            else if (!string.IsNullOrEmpty(resolvedBody))
-            {
-                // Check if user specified a custom Content-Type header.
-                string? contentTypeKey = Headers.Keys.FirstOrDefault(k =>
-                    string.Equals(k, "Content-Type", StringComparison.OrdinalIgnoreCase));
-
-                string mediaType = contentTypeKey != null && !string.IsNullOrWhiteSpace(Headers[contentTypeKey])
-                    ? Resolve(Headers[contentTypeKey])
-                    : "application/json";
-
-                RequestMessage.Content = MediaTypeHeaderValue.TryParse(mediaType, out MediaTypeHeaderValue? parsedMediaType)
-                    ? new StringContent(resolvedBody, Encoding.UTF8, parsedMediaType)
-                    : new StringContent(resolvedBody, Encoding.UTF8, "application/json");
-            }
-        }
-
-        // Add custom headers (skip Content-Type here because it is set on req.Content)
-        foreach ((string key, string value) in Headers)
-        {
-            if (RequestMessage.Content != null &&
-                string.Equals(key, "Content-Type", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            RequestMessage.Headers.TryAddWithoutValidation(Resolve(key), Resolve(value));
-        }
-
-        // Apply authentication
-        ApplyAuth(RequestMessage);
-
         try
         {
+            // Resolve variables in route and body
+            string resolvedRoute = Resolve(Route);
+            string resolvedBody = Resolve(Body);
+
+            RequestMessage = new HttpRequestMessage(HttpMethod, BuildUri(resolvedRoute))
+            {
+                Content = BuildContent(resolvedBody),
+            };
+
+            // Add custom headers (skip Content-Type here because it is set on req.Content)
+            foreach ((string key, string value) in Headers)
+            {
+                if (RequestMessage.Content != null &&
+                    string.Equals(key, "Content-Type", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                RequestMessage.Headers.TryAddWithoutValidation(Resolve(key), Resolve(value));
+            }
+
+            // Apply authentication
+            ApplyAuth(RequestMessage);
+
+            requestSize = RequestMessage.Content?.Headers.ContentLength ?? 0;
+
             HttpClient client = Parent?.Client ?? StandaloneClient;
             Watch.Start();
             ResponseMessage = await client.SendAsync(
@@ -148,28 +114,89 @@ public class PosterReqRes
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
             ResponseBody = await ResponseMessage.Content.ReadAsStringAsync(cancellationToken);
-            responseSize = System.Text.Encoding.UTF8.GetByteCount(ResponseBody);
+            responseSize = Encoding.UTF8.GetByteCount(ResponseBody);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             Error = "Request cancelled.";
         }
-        catch (HttpRequestException ex)
+        catch (OperationCanceledException)
         {
+            Error = "Request timed out.";
+        }
+        catch (Exception ex)
+        {
+            // Bad URL, missing upload file, network failure, etc. - report instead of crashing the UI.
             Error = ex.Message;
         }
         finally
         {
             Watch.Stop();
             LastExec = DateTime.UtcNow;
+
+            // Release upload file handles as soon as the exchange is over.
+            RequestMessage?.Content?.Dispose();
         }
 
-        long requestSize = RequestMessage?.Content?.Headers.ContentLength
-            ?? System.Text.Encoding.UTF8.GetByteCount(resolvedBody);
-        Metric = Metrics.Update(
-            requestSize,
-            responseSize,
-            Watch.ElapsedMilliseconds);
+        Metric = Metrics.Update(requestSize, responseSize, Watch.ElapsedMilliseconds);
+    }
+
+    /// <summary>Builds the request content (multipart, string or none). Never leaks file handles on failure.</summary>
+    private HttpContent? BuildContent(string resolvedBody)
+    {
+        if (HttpMethod == HttpMethod.Get ||
+            HttpMethod == HttpMethod.Delete ||
+            HttpMethod == HttpMethod.Head ||
+            HttpMethod == HttpMethod.Options)
+            return null;
+
+        if (Files.Count > 0)
+        {
+            MultipartFormDataContent multipart = new();
+            try
+            {
+                foreach (FileUpload file in Files)
+                {
+                    string filePath = Resolve(file.FilePath);
+                    string fieldName = Resolve(file.FieldName);
+                    FileStream stream = File.OpenRead(filePath);
+                    try
+                    {
+                        multipart.Add(
+                            new StreamContent(stream),
+                            string.IsNullOrWhiteSpace(fieldName) ? "file" : fieldName,
+                            Path.GetFileName(filePath));
+                    }
+                    catch
+                    {
+                        stream.Dispose();
+                        throw;
+                    }
+                }
+            }
+            catch
+            {
+                multipart.Dispose(); // also disposes streams already added
+                throw;
+            }
+
+            return multipart;
+        }
+
+        if (string.IsNullOrEmpty(resolvedBody))
+            return null;
+
+        // Check if user specified a custom Content-Type header.
+        string? contentTypeKey = Headers.Keys.FirstOrDefault(k =>
+            string.Equals(k, "Content-Type", StringComparison.OrdinalIgnoreCase));
+
+        string mediaType = contentTypeKey != null && !string.IsNullOrWhiteSpace(Headers[contentTypeKey])
+            ? Resolve(Headers[contentTypeKey])
+            : "application/json";
+
+        return MediaTypeHeaderValue.TryParse(mediaType, out MediaTypeHeaderValue? parsedMediaType)
+            ? new StringContent(resolvedBody, Encoding.UTF8, parsedMediaType)
+            : new StringContent(resolvedBody, Encoding.UTF8, "application/json");
     }
 
     private Uri BuildUri(string route)

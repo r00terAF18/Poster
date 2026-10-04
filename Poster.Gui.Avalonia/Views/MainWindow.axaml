@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Poster.Desktop.ViewModels"
+        xmlns:v="using:Poster.Desktop.Views"
+        x:Class="Poster.Desktop.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="Poster"
+        Width="1080" Height="780"
+        MinWidth="620" MinHeight="560"
+        WindowStartupLocation="CenterScreen">
+
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:RequestViewModel"><v:RequestView /></DataTemplate>
+    <DataTemplate DataType="vm:HistoryViewModel"><v:HistoryView /></DataTemplate>
+    <DataTemplate DataType="vm:VariablesViewModel"><v:VariablesView /></DataTemplate>
+    <DataTemplate DataType="vm:WorkspacesViewModel"><v:WorkspacesView /></DataTemplate>
+  </Window.DataTemplates>
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- Header: big title on the left, page pills on the right -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="36,32,36,12">
+      <StackPanel Spacing="2" VerticalAlignment="Center">
+        <TextBlock Classes="title" Text="Poster" />
+        <TextBlock Classes="subtitle" Text="{Binding WorkspaceName}" />
+      </StackPanel>
+      <ListBox Grid.Column="1"
+               Classes="pills"
+               VerticalAlignment="Center"
+               ItemsSource="{Binding PageTitles}"
+               SelectedIndex="{Binding SelectedPageIndex}" />
+    </Grid>
+
+    <ContentControl Grid.Row="1" Margin="36,8,36,36" Content="{Binding CurrentPage}" />
+
+    <Border Grid.Row="1"
+            Classes="toast"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,40"
+            IsVisible="{Binding HasNotice}">
+      <TextBlock Text="{Binding Notice}" />
+    </Border>
+
+  </Grid>
+</Window>
