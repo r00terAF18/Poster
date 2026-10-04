@@ -35,7 +35,7 @@ public class Workspace
 
     public void Save()
     {
-        string json = JsonSerializer.Serialize(this);
+        string json = JsonSerializer.Serialize(this, PosterJsonContext.Default.Workspace);
         File.WriteAllText($"Workspace-{Id}.json", json);
     }
 
@@ -49,7 +49,7 @@ public class Workspace
         if (!File.Exists(filePath)) return;
         string json = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
         if (json.Length <= 10) return;
-        var w = JsonSerializer.Deserialize<Workspace>(json);
+        var w = JsonSerializer.Deserialize(json, PosterJsonContext.Default.Workspace);
         if (w != null) load(w);
     }
 

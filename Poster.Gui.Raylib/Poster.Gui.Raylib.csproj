@@ -4,11 +4,23 @@
     <ProjectReference Include="..\Poster.Core\Poster.Core.csproj" />
   </ItemGroup>
 
+    <ItemGroup>
+        <PackageReference Include="Raylib-cs" Version="8.1.0"/>
+    </ItemGroup>
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AssemblyName>Poster.Gui.Raylib</AssemblyName>
+    <RootNamespace>Poster.Gui.Raylib</RootNamespace>
+    <Description>Raylib graphical API testing client for Poster.</Description>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
 </Project>
