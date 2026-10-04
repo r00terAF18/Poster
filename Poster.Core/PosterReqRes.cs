@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json.Serialization;
 using System.Net.Http.Headers;
+using System.Text;
 
 namespace Poster.Core;
 
@@ -35,6 +36,9 @@ public class PosterReqRes
     /// <summary>Custom request headers. Supports {{variable}} interpolation in values.</summary>
     public Dictionary<string, string> Headers { get; set; } = new();
 
+    /// <summary>Query parameters. Supports {{variable}} interpolation in values.</summary>
+    public Dictionary<string, string> QueryParams { get; set; } = new();
+
     /// <summary>Authentication configuration for this request.</summary>
     public AuthConfig Auth { get; set; } = new();
 
@@ -46,22 +50,29 @@ public class PosterReqRes
 
     [JsonIgnore]
     private Workspace? Parent { get; set; }
-    private Stopwatch Watch { get; set; } = new();
+    private readonly Stopwatch Watch = new();
+    private static readonly HttpClient StandaloneClient = new();
 
     public PosterReqRes() { }
     public PosterReqRes(Workspace workspace) { Parent = workspace; }
 
-    public async Task SendAsync()
+    public async Task SendAsync(CancellationToken cancellationToken = default)
     {
         Error = null;
         long responseSize = 0;
         Watch.Reset();
 
+        RequestMessage?.Dispose();
+        ResponseMessage?.Dispose();
+        RequestMessage = null;
+        ResponseMessage = null;
+        ResponseBody = null;
+
         // Resolve variables in route and body
         var resolvedRoute = Resolve(Route);
         var resolvedBody = Resolve(Body);
 
-        var uri = new Uri(resolvedRoute);
+        var uri = BuildUri(resolvedRoute);
         RequestMessage = new HttpRequestMessage(HttpMethod, uri);
 
         // Attach body for methods that carry one
@@ -84,11 +95,18 @@ public class PosterReqRes
 
         try
         {
-            HttpClient client = Parent == null ? new HttpClient() : Parent.Client;
+            HttpClient client = Parent?.Client ?? StandaloneClient;
             Watch.Start();
-            ResponseMessage = await client.SendAsync(RequestMessage);
-            ResponseBody = await ResponseMessage.Content.ReadAsStringAsync();
+            ResponseMessage = await client.SendAsync(
+                RequestMessage,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            ResponseBody = await ResponseMessage.Content.ReadAsStringAsync(cancellationToken);
             responseSize = System.Text.Encoding.UTF8.GetByteCount(ResponseBody);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Error = "Request cancelled.";
         }
         catch (HttpRequestException ex)
         {
@@ -104,6 +122,25 @@ public class PosterReqRes
             System.Text.Encoding.UTF8.GetByteCount(resolvedBody),
             responseSize,
             Watch.ElapsedMilliseconds);
+    }
+
+    private Uri BuildUri(string route)
+    {
+        var builder = new UriBuilder(route);
+        if (QueryParams.Count == 0)
+            return builder.Uri;
+
+        var query = new StringBuilder(builder.Query.TrimStart('?'));
+        foreach (var (key, value) in QueryParams)
+        {
+            if (query.Length > 0) query.Append('&');
+            query.Append(Uri.EscapeDataString(Resolve(key)))
+                .Append('=')
+                .Append(Uri.EscapeDataString(Resolve(value)));
+        }
+
+        builder.Query = query.ToString();
+        return builder.Uri;
     }
 
     public void SetParent(Workspace workspace) => Parent = workspace;

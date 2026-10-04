@@ -8,6 +8,8 @@ namespace Poster.Core;
 
 public class Workspace
 {
+    private static readonly Regex VariablePattern = new(@"\{\{(\w+)\}\}", RegexOptions.Compiled);
+
     public Dictionary<string, string> Variables { get; set; } = new();
     public string Name { get; set; } = "My Workspace";
     public Guid Id { get; set; }
@@ -27,7 +29,7 @@ public class Workspace
     public string Resolve(string input)
     {
         if (string.IsNullOrEmpty(input)) return input;
-        return Regex.Replace(input, @"\{\{(\w+)\}\}", m =>
+        return VariablePattern.Replace(input, m =>
             Variables.TryGetValue(m.Groups[1].Value, out string? val) ? val : m.Value);
     }
 

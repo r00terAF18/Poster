@@ -81,7 +81,8 @@ internal static class TuiApp
         var method = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("HTTP [cyan]method[/]:")
-                .AddChoices("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"));
+                .AddChoices("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "Back"));
+        if (method == "Back") return;
 
         var route = AnsiConsole.Ask<string>("[cyan]Route[/] (supports {{base_url}}):");
         if (!route.StartsWith("http") && !route.Contains("{{"))
@@ -104,6 +105,9 @@ internal static class TuiApp
             if (!string.IsNullOrWhiteSpace(body)) req.Body = body;
         }
 
+        if (AnsiConsole.Confirm("Add query [cyan]parameters[/]?", defaultValue: false))
+            AddQueryParams(req);
+
         // Custom headers
         if (AnsiConsole.Confirm("Add custom [cyan]headers[/]?", defaultValue: false))
             AddHeaders(req);
@@ -119,9 +123,7 @@ internal static class TuiApp
         if (!standalone)
             _workspace.Requests.Add(req);
 
-        await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .StartAsync("Sending…", async _ => await req.SendAsync());
+        await SendRequestAsync(req);
 
         RenderResult(req);
     }
@@ -136,6 +138,40 @@ internal static class TuiApp
             if (string.IsNullOrWhiteSpace(key)) break;
             var value = AnsiConsole.Ask<string>($"Value for [cyan]{key}[/]:");
             req.Headers[key] = value;
+        }
+    }
+
+    private static void AddQueryParams(PosterReqRes req)
+    {
+        while (true)
+        {
+            var key = AnsiConsole.Ask<string>("Query [cyan]name[/] (blank to stop):", "");
+            if (string.IsNullOrWhiteSpace(key)) break;
+            var value = AnsiConsole.Ask<string>($"Value for [cyan]{key}[/]:");
+            req.QueryParams[key] = value;
+        }
+    }
+
+    private static async Task SendRequestAsync(PosterReqRes req)
+    {
+        using var cancellation = new CancellationTokenSource();
+        ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            cancellation.Cancel();
+        };
+
+        System.Console.CancelKeyPress += cancelHandler;
+        try
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Sending… (Ctrl+C to cancel)", async _ =>
+                    await req.SendAsync(cancellation.Token));
+        }
+        finally
+        {
+            System.Console.CancelKeyPress -= cancelHandler;
         }
     }
 
@@ -211,7 +247,8 @@ internal static class TuiApp
         var source = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("Import OpenAPI spec from:")
-                .AddChoices("Local JSON file", "URL"));
+                .AddChoices("Local JSON file", "URL", "Back"));
+        if (source == "Back") return;
 
         try
         {
@@ -289,7 +326,8 @@ internal static class TuiApp
         var file = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("Load which workspace?")
-                .AddChoices(files));
+                .AddChoices(files.Append("Back")));
+        if (file == "Back") return;
 
         _workspace.Load(file);
         AnsiConsole.MarkupLine(
@@ -338,14 +376,24 @@ internal static class TuiApp
         AnsiConsole.Write(tbl);
 
         var pick = AnsiConsole.Ask<string>(
-            "Re-run a request by [cyan]#[/] (or blank to go back):", "");
+            "Select a request by [cyan]#[/] (or blank to go back):", "");
         if (int.TryParse(pick, out var idx) && idx >= 1 && idx <= _workspace.Requests.Count)
         {
             var req = _workspace.Requests[idx - 1];
-            await AnsiConsole.Status()
-                .Spinner(Spinner.Known.Dots)
-                .StartAsync("Sending…", async _ => await req.SendAsync());
-            RenderResult(req);
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"Request [cyan]{req.Name}[/]")
+                    .AddChoices("Run request", "Delete request", "Back"));
+            if (action == "Run request")
+            {
+                await SendRequestAsync(req);
+                RenderResult(req);
+            }
+            else if (action == "Delete request")
+            {
+                _workspace.Requests.RemoveAt(idx - 1);
+                AnsiConsole.MarkupLine("[green]Request deleted.[/]");
+            }
         }
     }
 
