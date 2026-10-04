@@ -1,7 +1,4 @@
-using System;
-using System.Data;
 using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Text.Json.Serialization;
 
 namespace Poster.Core;
@@ -16,12 +13,18 @@ public class PosterReqRes
     public HttpRequestMessage RequestMessage { get; set; }
     [JsonIgnore]
     public HttpResponseMessage ResponseMessage { get; set; }
-    public HttpHeaders Headers { get; set; }
+    public Dictionary<string, string> Headers { get; set; } = new();
+
+    public string? ResponseBody { get; private set; }
+
     public string Body { get; set; } = "";
     public string? Error { get; set; }
 
     public DateTime LastExec { get; set; }
 
+    /// <summary>
+    /// Either a request belongs to a workspace, or is just a one off standalone.
+    /// </summary>
     [JsonIgnore]
     private Workspace? Parent { get; set; }
     public Metrics Metric { get; set; }
@@ -51,13 +54,20 @@ public class PosterReqRes
             RequestMessage.Content = body;
         }
 
+        foreach (var (key, value) in Headers)
+        {
+            RequestMessage.Headers.TryAddWithoutValidation(key, value);
+        }
+
+
+
         try
         {
             HttpClient client = Parent == null ? new() : Parent.Client;
             Watch.Start();
             ResponseMessage = await client.SendAsync(RequestMessage);
-            Watch.Stop();
             var responseBody = await ResponseMessage.Content.ReadAsStringAsync();
+            ResponseBody = responseBody;
             responseSize = System.Text.Encoding.UTF8.GetByteCount(responseBody);
         }
         catch (HttpRequestException ex)
@@ -72,7 +82,7 @@ public class PosterReqRes
         Metric = Metrics.Update(System.Text.Encoding.UTF8.GetByteCount(Body), responseSize, Watch.ElapsedMilliseconds);
     }
 
-    
+
     public void SetParent(Workspace workspace) => Parent = workspace;
 
 }
