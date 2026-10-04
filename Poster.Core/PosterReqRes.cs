@@ -1,58 +1,36 @@
 using System;
 using System.Data;
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Text.Json.Serialization;
 
 namespace Poster.Core;
-
-public struct Metrics
-{
-    long request_size = 0;
-    long response_size = 0;
-    long elapsed_time = 0;
-
-    public Metrics()
-    {
-    }
-
-    public Metrics(long[] args)
-    {
-        if (args.Length is > 0 and <= 4)
-        {
-            request_size = args[0];
-            response_size = args[1];
-            elapsed_time = args[2];
-        }
-    }
-    public static Metrics Update(long req_size)
-    {
-        return new Metrics() { request_size = req_size };
-    }
-
-    public static Metrics Update(long req_size, long res_size)
-    {
-        return new Metrics() { request_size = req_size, response_size = res_size };
-    }
-
-    public static Metrics Update(long req_size, long res_size, long elapsed)
-    {
-        return new Metrics() { request_size = req_size, response_size = res_size, elapsed_time = elapsed };
-    }
-}
 
 public class PosterReqRes
 {
     public required HttpMethod HttpMethod { get; set; } = HttpMethod.Get;
     public required string Route { get; set; }
+    public string Name { get; set; } = "New Request";
 
-    public required HttpRequestMessage RequestMessage { get; set; }
-    public required HttpResponseMessage ResponseMessage { get; set; }
+    [JsonIgnore]
+    public HttpRequestMessage RequestMessage { get; set; }
+    [JsonIgnore]
+    public HttpResponseMessage ResponseMessage { get; set; }
+    public HttpHeaders Headers { get; set; }
     public string Body { get; set; } = "";
     public string? Error { get; set; }
 
     public DateTime LastExec { get; set; }
 
-    private Workspace Parent { get; set; }
+    [JsonIgnore]
+    private Workspace? Parent { get; set; }
     public Metrics Metric { get; set; }
+    private Stopwatch Watch { get; set; } = new();
+
+    public PosterReqRes()
+    {
+
+    }
 
     public PosterReqRes(Workspace workspace)
     {
@@ -62,9 +40,10 @@ public class PosterReqRes
     public async Task SendAsync()
     {
         Error = null;
-        
+        long responseSize = 0;
+        Watch.Reset();
+
         var uri = new Uri(Route);
-        Stopwatch watch = new();
         RequestMessage = new HttpRequestMessage(HttpMethod, uri);
         if (HttpMethod != HttpMethod.Get)
         {
@@ -74,15 +53,26 @@ public class PosterReqRes
 
         try
         {
-            watch.Start();
-            ResponseMessage = await Parent.Client.SendAsync(RequestMessage);
-            watch.Stop();
+            HttpClient client = Parent == null ? new() : Parent.Client;
+            Watch.Start();
+            ResponseMessage = await client.SendAsync(RequestMessage);
+            Watch.Stop();
+            var responseBody = await ResponseMessage.Content.ReadAsStringAsync();
+            responseSize = System.Text.Encoding.UTF8.GetByteCount(responseBody);
         }
         catch (HttpRequestException ex)
         {
             Error = ex.Message;
         }
+        finally
+        {
+            Watch.Stop();
+        }
 
-        Metric = Metrics.Update(System.Text.Encoding.UTF8.GetByteCount(Body), 0, watch.ElapsedMilliseconds);
+        Metric = Metrics.Update(System.Text.Encoding.UTF8.GetByteCount(Body), responseSize, Watch.ElapsedMilliseconds);
     }
+
+    
+    public void SetParent(Workspace workspace) => Parent = workspace;
+
 }

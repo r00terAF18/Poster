@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.IO;
+using System.Text.Json.Serialization;
 
 namespace Poster.Core;
 
@@ -9,6 +10,7 @@ public class Workspace
     public string Name { get; set; } = "My Workspace";
     public Guid Id { get; set; }
 
+    [JsonIgnore]
     public HttpClient Client { get; set; }
 
     public List<PosterReqRes> Requests { get; set; } = [];
@@ -47,7 +49,7 @@ public class Workspace
         if (w != null)
             load(w);
 
-        
+
     }
 
     private void load(Workspace w)
@@ -56,5 +58,10 @@ public class Workspace
         Name = w.Name;
         Variables = w.Variables;
         Requests = w.Requests;
+
+        // re-wire parent reference lost during deserialization
+        foreach (var req in Requests)
+            req.SetParent(this);
     }
+
 }
