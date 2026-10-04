@@ -1,324 +1,390 @@
 ﻿using Spectre.Console;
-using Spectre.Console.Json;
 using Poster.Core;
+using System.Net.Http;
 using Spectre.Console.Rendering;
+using Spectre.Console.Json;
 
-// ── theme tokens ─────────────────────────────────────────────────────────────
-// accent : oklch(65% 0.18 210)  → cyan-ish #2EA8C7
-// surface: oklch(14% 0.01 240)  → near-black #1B1E23
-// muted  : oklch(55% 0.01 240)  → #7E8390
-// ─────────────────────────────────────────────────────────────────────────────
+namespace Poster.Console;
 
-await TuiApp.RunAsync();
-
-static class TuiApp
+internal enum MainChoice
 {
-    public static async Task RunAsync()
-    {
-        Console.Title = "Poster";
-        AnsiConsole.Clear();
-        DrawBanner();
+    NewRequestWorkspace,
+    NewRequestStandalone,
+    ManageVariables,
+    ImportOpenApi,
+    LoadWorkspace,
+    SaveWorkspace,
+    ViewHistory,
+    Quit,
+}
 
-        var workspace = new Workspace();
+internal static class TuiApp
+{
+    private static Workspace _workspace = new();
+
+    public static async Task Main(string[] args)
+    {
+        DrawBanner();
 
         while (true)
         {
-            var choice = MainMenu();
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<MainChoice>()
+                    .Title("[grey]Main menu[/]")
+                    .UseConverter(ChoiceLabel)
+                    .AddChoices(Enum.GetValues<MainChoice>()));
 
             switch (choice)
             {
-                case MainChoice.NewRequest:
-                    await RunNewRequestAsync(workspace, standalone: false);
+                case MainChoice.NewRequestWorkspace:
+                    await RunNewRequestAsync(standalone: false);
                     break;
-                case MainChoice.StandaloneRequest:
-                    await RunNewRequestAsync(workspace, standalone: true);
+                case MainChoice.NewRequestStandalone:
+                    await RunNewRequestAsync(standalone: true);
+                    break;
+                case MainChoice.ManageVariables:
+                    ManageVariables();
+                    break;
+                case MainChoice.ImportOpenApi:
+                    await ImportOpenApiAsync();
                     break;
                 case MainChoice.LoadWorkspace:
-                    LoadWorkspaceFlow(workspace);
+                    LoadWorkspaceFlow();
                     break;
                 case MainChoice.SaveWorkspace:
-                    SaveWorkspaceFlow(workspace);
+                    SaveWorkspaceFlow();
                     break;
                 case MainChoice.ViewHistory:
-                    ViewHistory(workspace);
+                    await ViewHistoryAsync();
                     break;
                 case MainChoice.Quit:
-                    AnsiConsole.MarkupLine("[grey]bye.[/]");
                     return;
             }
         }
     }
 
-    // ── banner ────────────────────────────────────────────────────────────────
+    // ── Banner ────────────────────────────────────────────────────────────────
 
-    static void DrawBanner()
+    private static void DrawBanner()
     {
-        AnsiConsole.Write(
-            new FigletText("Poster")
-                .LeftJustified()
-                .Color(Color.Cyan1));
-        AnsiConsole.MarkupLine("[grey]lightweight TUI API tester[/]");
-        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new FigletText("Poster").Color(Color.Cyan1));
+        AnsiConsole.MarkupLine("[grey]API testing tool  |  offline  |  v5[/]\n");
     }
 
-    // ── main menu ─────────────────────────────────────────────────────────────
+    // ── New Request ───────────────────────────────────────────────────────────
 
-    enum MainChoice
+    private static async Task RunNewRequestAsync(bool standalone)
     {
-        NewRequest,
-        StandaloneRequest,
-        LoadWorkspace,
-        SaveWorkspace,
-        ViewHistory,
-        Quit
-    }
+        var name = AnsiConsole.Ask<string>("Request [cyan]name[/]:", "New Request");
 
-    static MainChoice MainMenu()
-    {
-        return AnsiConsole.Prompt(
-            new SelectionPrompt<MainChoice>()
-                .Title("[cyan1]What do you want to do?[/]")
-                .UseConverter(c => c switch
-                {
-                    MainChoice.NewRequest        => "New request  (workspace)",
-                    MainChoice.StandaloneRequest => "New request  (standalone)",
-                    MainChoice.LoadWorkspace     => "Load workspace",
-                    MainChoice.SaveWorkspace     => "Save workspace",
-                    MainChoice.ViewHistory       => "View request history",
-                    MainChoice.Quit              => "Quit",
-                    _                            => c.ToString()
-                })
-                .AddChoices(Enum.GetValues<MainChoice>()));
-    }
-
-    // ── new request flow ──────────────────────────────────────────────────────
-
-    static async Task RunNewRequestAsync(Workspace workspace, bool standalone)
-    {
-        AnsiConsole.WriteLine();
-
-        // ── name
-        string name = AnsiConsole.Ask<string>("Request name: ", "New Request");
-
-        // ── base URL (workspace default or per-request)
-        string baseUrl = AnsiConsole.Ask<string>("Base URL: ", "http://127.0.0.1:8000");
-
-        // ── HTTP method
+        // Method selection — includes all supported verbs
         var method = AnsiConsole.Prompt(
-            new SelectionPrompt<HttpMethod>()
-                .Title("HTTP method:")
-                .UseConverter(m => m.Method)
-                .AddChoices(
-                    HttpMethod.Get,
-                    HttpMethod.Post,
-                    HttpMethod.Put,
-                    HttpMethod.Delete,
-                    HttpMethod.Patch));
+            new SelectionPrompt<string>()
+                .Title("HTTP [cyan]method[/]:")
+                .AddChoices("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"));
 
-        // ── route
-        string route = AnsiConsole.Ask<string>("Route: ", "/health");
-        if (!route.StartsWith('/')) route = $"/{route}";
+        var route = AnsiConsole.Ask<string>("[cyan]Route[/] (supports {{base_url}}):");
+        if (!route.StartsWith("http") && !route.Contains("{{"))
+            route = "/" + route.TrimStart('/');
 
-        // ── body (only for non-GET)
-        string body = "";
-        if (method != HttpMethod.Get && method != HttpMethod.Delete)
+        var httpMethod = ParseMethod(method);
+
+        var req = standalone
+            ? new PosterReqRes { Name = name, Route = route, HttpMethod = httpMethod }
+            : new PosterReqRes(_workspace) { Name = name, Route = route, HttpMethod = httpMethod };
+
+        // Body
+        bool wantsBody = httpMethod != HttpMethod.Get &&
+                         httpMethod != HttpMethod.Delete &&
+                         httpMethod != HttpMethod.Head &&
+                         httpMethod != HttpMethod.Options;
+        if (wantsBody)
         {
-            body = AnsiConsole.Ask<string>("JSON body: ", "{}");
+            var body = AnsiConsole.Ask<string>("JSON [cyan]body[/] (leave blank to skip):", "");
+            if (!string.IsNullOrWhiteSpace(body)) req.Body = body;
         }
 
-        // ── build request
-        var req = standalone
-            ? new PosterReqRes
-              {
-                  HttpMethod = method,
-                  Route      = $"{baseUrl}{route}",
-                  Name       = name,
-                  Body       = body
-              }
-            : new PosterReqRes(workspace)
-              {
-                  HttpMethod = method,
-                  Route      = $"{baseUrl}{route}",
-                  Name       = name,
-                  Body       = body
-              };
+        // Custom headers
+        if (AnsiConsole.Confirm("Add custom [cyan]headers[/]?", defaultValue: false))
+            AddHeaders(req);
+
+        // Auth
+        var authType = AnsiConsole.Prompt(
+            new SelectionPrompt<AuthType>()
+                .Title("[cyan]Authentication[/]:")
+                .AddChoices(Enum.GetValues<AuthType>()));
+
+        ConfigureAuth(req, authType);
 
         if (!standalone)
-            workspace.Requests.Add(req);
+            _workspace.Requests.Add(req);
 
-        // ── send with spinner
         await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots2)
-            .SpinnerStyle(Style.Parse("cyan1"))
-            .StartAsync("[grey]Sending…[/]", async _ => await req.SendAsync());
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Sending…", async _ => await req.SendAsync());
 
-        // ── render result
         RenderResult(req);
     }
 
-    // ── result panel ──────────────────────────────────────────────────────────
+    // ── Header input ──────────────────────────────────────────────────────────
 
-    static void RenderResult(PosterReqRes req)
+    private static void AddHeaders(PosterReqRes req)
     {
-        AnsiConsole.WriteLine();
-
-        if (req.Error is not null)
+        while (true)
         {
-            AnsiConsole.Write(
-                new Panel($"[red]{Markup.Escape(req.Error)}[/]")
-                    .Header("[red bold] Error [/]", Justify.Center)
-                    .RoundedBorder()
-                    .BorderColor(Color.Red));
-            return;
+            var key = AnsiConsole.Ask<string>("Header [cyan]name[/] (blank to stop):", "");
+            if (string.IsNullOrWhiteSpace(key)) break;
+            var value = AnsiConsole.Ask<string>($"Value for [cyan]{key}[/]:");
+            req.Headers[key] = value;
         }
+    }
 
-        if (req.ResponseMessage is null)
+    // ── Auth configuration ────────────────────────────────────────────────────
+
+    private static void ConfigureAuth(PosterReqRes req, AuthType type)
+    {
+        req.Auth.Type = type;
+        switch (type)
         {
-            AnsiConsole.MarkupLine("[red]No response received.[/]");
-            return;
+            case AuthType.Bearer:
+                req.Auth.Token = AnsiConsole.Ask<string>("Bearer [cyan]token[/]:");
+                break;
+            case AuthType.Basic:
+                req.Auth.Username = AnsiConsole.Ask<string>("[cyan]Username[/]:");
+                req.Auth.Password = AnsiConsole.Ask<string>("[cyan]Password[/]:");
+                break;
+            case AuthType.ApiKey:
+                req.Auth.ApiKeyHeader = AnsiConsole.Ask<string>("Header name:", "X-API-Key");
+                req.Auth.Token = AnsiConsole.Ask<string>("[cyan]API key[/]:");
+                break;
         }
+    }
 
-        var resp     = req.ResponseMessage;
-        var metric   = req.Metric;
-        bool success = resp.IsSuccessStatusCode;
+    // ── Variable management ───────────────────────────────────────────────────
 
-        // read body (already consumed in SendAsync via ReadAsStringAsync,
-        // so we buffer it once inside PosterReqRes and expose it — see note below)
-        string responseBody = req.ResponseBody ?? "(empty)";
+    private static void ManageVariables()
+    {
+        AnsiConsole.MarkupLine($"\n[bold]Variables[/] — workspace [cyan]{_workspace.Name}[/]\n");
 
-        string statusColor  = success ? "green" : "red";
-        string statusLabel  = $"[{statusColor} bold]{(int)resp.StatusCode} {resp.StatusCode}[/]";
-        string metricLabel  =
-            $"[grey]{metric.ElapsedTime} ms  " +
-            $"↑ {FormatBytes(metric.RequestSize)}  " +
-            $"↓ {FormatBytes(metric.ResponseSize)}[/]";
-
-        string headerText = $"{statusLabel}  {metricLabel}";
-
-        IRenderable body;
-        if (success && LooksLikeJson(responseBody))
+        if (_workspace.Variables.Count > 0)
         {
-            body = new JsonText(responseBody);
+            var tbl = new Table().BorderColor(Color.Grey).Border(TableBorder.Rounded);
+            tbl.AddColumn("Name").AddColumn("Value");
+            foreach (var (k, v) in _workspace.Variables)
+                tbl.AddRow($"[cyan]{k}[/]", v);
+            AnsiConsole.Write(tbl);
         }
         else
         {
-            body = new Markup(Markup.Escape(responseBody));
+            AnsiConsole.MarkupLine("[grey]No variables set.[/]");
         }
 
-        AnsiConsole.Write(
-            new Panel(body)
-                .Header($" {Markup.Escape(req.Name)} ", Justify.Left)
-                .RoundedBorder()
-                .BorderColor(success ? Color.Cyan1 : Color.Red)
-                .Expand());
+        AnsiConsole.WriteLine();
+        var action = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Action:")
+                .AddChoices("Set / update variable", "Delete variable", "Back"));
+
+        if (action == "Set / update variable")
+        {
+            var key = AnsiConsole.Ask<string>("Variable [cyan]name[/]:");
+            var value = AnsiConsole.Ask<string>($"Value for [cyan]{{{{{key}}}}}[/]:");
+            _workspace.Variables[key] = value;
+            AnsiConsole.MarkupLine($"[green]Set[/] [cyan]{{{{{key}}}}}[/] = {value}");
+        }
+        else if (action == "Delete variable")
+        {
+            if (_workspace.Variables.Count == 0) return;
+            var key = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Delete which variable?")
+                    .AddChoices(_workspace.Variables.Keys));
+            _workspace.Variables.Remove(key);
+            AnsiConsole.MarkupLine($"[red]Removed[/] [cyan]{{{{{key}}}}}[/]");
+        }
     }
 
-    // ── workspace: load ───────────────────────────────────────────────────────
+    // ── OpenAPI import ────────────────────────────────────────────────────────
 
-    static void LoadWorkspaceFlow(Workspace workspace)
+    private static async Task ImportOpenApiAsync()
     {
-        var files = workspace.ListLocal();
+        var source = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Import OpenAPI spec from:")
+                .AddChoices("Local JSON file", "URL"));
+
+        try
+        {
+            if (source == "Local JSON file")
+            {
+                var path = AnsiConsole.Ask<string>("File [cyan]path[/]:");
+                _workspace.ImportFromOpenApiFile(path);
+            }
+            else
+            {
+                var url = AnsiConsole.Ask<string>("[cyan]URL[/]:");
+                await AnsiConsole.Status()
+                    .Spinner(Spinner.Known.Dots)
+                    .StartAsync("Fetching spec…", _ =>
+                    {
+                        _workspace.ImportFromOpenApiUrl(url);
+                        return Task.CompletedTask;
+                    });
+            }
+
+            AnsiConsole.MarkupLine(
+                $"[green]Imported[/] {_workspace.Requests.Count} request(s) into workspace.");
+
+            // Show any base_url that was auto-set
+            if (_workspace.Variables.TryGetValue("base_url", out var baseUrl))
+                AnsiConsole.MarkupLine($"[grey]base_url set to:[/] [cyan]{baseUrl}[/]");
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Import failed:[/] {ex.Message}");
+        }
+    }
+
+    // ── Result rendering ──────────────────────────────────────────────────────
+
+    private static void RenderResult(PosterReqRes req)
+    {
+        if (!string.IsNullOrEmpty(req.Error))
+        {
+            AnsiConsole.Write(new Panel($"[red]{req.Error}[/]")
+                .Header("[red]Error[/]").BorderColor(Color.Red));
+            return;
+        }
+
+        if (req.ResponseMessage == null) return;
+
+        var statusCode = (int)req.ResponseMessage.StatusCode;
+        var statusColor = statusCode is >= 200 and < 300 ? "green" : "red";
+        var header = $"[{statusColor}]{statusCode}[/]  " +
+                     $"[grey]{req.Metric.ElapsedTime} ms  " +
+                     $"↑ {FormatBytes(req.Metric.RequestSize)}  " +
+                     $"↓ {FormatBytes(req.Metric.ResponseSize)}[/]";
+
+        var body = req.ResponseBody ?? "";
+        IRenderable content = LooksLikeJson(body)
+            ? new JsonText(body)
+            : new Markup(body.EscapeMarkup());
+
+        AnsiConsole.Write(new Panel(content)
+            .Header(header)
+            .BorderColor(statusCode is >= 200 and < 300 ? Color.Green : Color.Red));
+    }
+
+    // ── Workspace flows ───────────────────────────────────────────────────────
+
+    private static void LoadWorkspaceFlow()
+    {
+        var files = _workspace.ListLocal();
         if (files.Length == 0)
         {
-            AnsiConsole.MarkupLine("[grey]No workspace files found in the current directory.[/]");
+            AnsiConsole.MarkupLine("[grey]No workspace files found.[/]");
             return;
         }
 
-        var chosen = AnsiConsole.Prompt(
+        var file = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
-                .Title("[cyan1]Choose a workspace file:[/]")
+                .Title("Load which workspace?")
                 .AddChoices(files));
 
-        workspace.Load(chosen);
-        AnsiConsole.MarkupLine($"[green]Loaded:[/] [grey]{Markup.Escape(workspace.Name)}[/] " +
-                               $"([grey]{workspace.Requests.Count} requests[/])");
+        _workspace.Load(file);
+        AnsiConsole.MarkupLine(
+            $"[green]Loaded[/] [cyan]{_workspace.Name}[/] " +
+            $"({_workspace.Requests.Count} request(s))");
     }
 
-    // ── workspace: save ───────────────────────────────────────────────────────
-
-    static void SaveWorkspaceFlow(Workspace workspace)
+    private static void SaveWorkspaceFlow()
     {
-        workspace.Name = AnsiConsole.Ask("Workspace name: ", workspace.Name);
-        workspace.Save();
-        AnsiConsole.MarkupLine($"[green]Saved[/] → [grey]Workspace-{workspace.Id}.json[/]");
+        _workspace.Name = AnsiConsole.Ask("Workspace [cyan]name[/]:", _workspace.Name);
+        _workspace.Save();
+        AnsiConsole.MarkupLine($"[green]Saved[/] Workspace-{_workspace.Id}.json");
     }
 
-    // ── history ───────────────────────────────────────────────────────────────
+    // ── History ───────────────────────────────────────────────────────────────
 
-    static void ViewHistory(Workspace workspace)
+    private static async Task ViewHistoryAsync()
     {
-        if (workspace.Requests.Count == 0)
+        if (_workspace.Requests.Count == 0)
         {
-            AnsiConsole.MarkupLine("[grey]No requests in this workspace yet.[/]");
+            AnsiConsole.MarkupLine("[grey]No requests in workspace.[/]");
             return;
         }
 
-        var table = new Table()
-            .Border(TableBorder.Rounded)
-            .BorderColor(Color.Grey)
-            .AddColumn(new TableColumn("[cyan1]#[/]").RightAligned())
-            .AddColumn("[cyan1]Name[/]")
-            .AddColumn("[cyan1]Method[/]")
-            .AddColumn("[cyan1]Route[/]")
-            .AddColumn("[cyan1]Status[/]")
-            .AddColumn("[cyan1]Time[/]")
-            .AddColumn("[cyan1]↓ Size[/]");
+        var tbl = new Table().BorderColor(Color.Grey).Border(TableBorder.Rounded);
+        tbl.AddColumn("#")
+           .AddColumn("Name")
+           .AddColumn("Method")
+           .AddColumn("Route")
+           .AddColumn("Last run")
+           .AddColumn("Time (ms)")
+           .AddColumn("↓ Size");
 
-        int i = 1;
-        foreach (var req in workspace.Requests)
+        for (int i = 0; i < _workspace.Requests.Count; i++)
         {
-            string status = req.Error is not null
-                ? "[red]error[/]"
-                : req.ResponseMessage is null
-                    ? "[grey]—[/]"
-                    : req.ResponseMessage.IsSuccessStatusCode
-                        ? $"[green]{(int)req.ResponseMessage.StatusCode}[/]"
-                        : $"[red]{(int)req.ResponseMessage.StatusCode}[/]";
-
-            table.AddRow(
-                $"[grey]{i++}[/]",
-                Markup.Escape(req.Name),
-                $"[cyan1]{req.HttpMethod.Method}[/]",
-                $"[grey]{Markup.Escape(req.Route)}[/]",
-                status,
-                $"[grey]{req.Metric.ElapsedTime} ms[/]",
-                $"[grey]{FormatBytes(req.Metric.ResponseSize)}[/]");
+            var r = _workspace.Requests[i];
+            tbl.AddRow(
+                $"{i + 1}",
+                r.Name,
+                r.HttpMethod.Method,
+                r.Route,
+                r.LastExec == default ? "[grey]-[/]" : r.LastExec.ToString("HH:mm:ss"),
+                r.Metric.ElapsedTime.ToString(),
+                FormatBytes(r.Metric.ResponseSize));
         }
+        AnsiConsole.Write(tbl);
 
-        AnsiConsole.Write(table);
-
-        // allow re-run of a history item
-        bool rerun = AnsiConsole.Confirm("Re-run a request?", defaultValue: false);
-        if (!rerun) return;
-
-        int idx = AnsiConsole.Ask<int>("Request number: ", 1) - 1;
-        if (idx < 0 || idx >= workspace.Requests.Count)
+        var pick = AnsiConsole.Ask<string>(
+            "Re-run a request by [cyan]#[/] (or blank to go back):", "");
+        if (int.TryParse(pick, out var idx) && idx >= 1 && idx <= _workspace.Requests.Count)
         {
-            AnsiConsole.MarkupLine("[red]Invalid number.[/]");
-            return;
+            var req = _workspace.Requests[idx - 1];
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Sending…", async _ => await req.SendAsync());
+            RenderResult(req);
         }
-
-        var chosen = workspace.Requests[idx];
-        AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots2)
-            .SpinnerStyle(Style.Parse("cyan1"))
-            .Start("[grey]Sending…[/]", _ => chosen.SendAsync().GetAwaiter().GetResult());
-
-        RenderResult(chosen);
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────────
+    // ── Utilities ─────────────────────────────────────────────────────────────
 
-    static string FormatBytes(long bytes) => bytes switch
+    private static HttpMethod ParseMethod(string s) => s.ToUpperInvariant() switch
     {
-        < 1024                 => $"{bytes} B",
-        < 1024 * 1024          => $"{bytes / 1024.0:F1} KB",
-        _                      => $"{bytes / (1024.0 * 1024):F1} MB"
+        "POST" => HttpMethod.Post,
+        "PUT" => HttpMethod.Put,
+        "PATCH" => HttpMethod.Patch,
+        "DELETE" => HttpMethod.Delete,
+        "HEAD" => HttpMethod.Head,
+        "OPTIONS" => HttpMethod.Options,
+        _ => HttpMethod.Get,
     };
 
-    static bool LooksLikeJson(string s)
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        _ => $"{bytes / (1024.0 * 1024):F1} MB",
+    };
+
+    private static bool LooksLikeJson(string s)
     {
         var t = s.TrimStart();
         return t.StartsWith('{') || t.StartsWith('[');
     }
+
+    private static string ChoiceLabel(MainChoice c) => c switch
+    {
+        MainChoice.NewRequestWorkspace => "New request (workspace)",
+        MainChoice.NewRequestStandalone => "New request (standalone)",
+        MainChoice.ManageVariables => "Manage variables",
+        MainChoice.ImportOpenApi => "Import OpenAPI spec",
+        MainChoice.LoadWorkspace => "Load workspace",
+        MainChoice.SaveWorkspace => "Save workspace",
+        MainChoice.ViewHistory => "View request history",
+        MainChoice.Quit => "Quit",
+        _ => c.ToString(),
+    };
 }
